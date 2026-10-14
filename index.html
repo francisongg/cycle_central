@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cycle Central — Bikes & Parts</title>
+  <meta name="description" content="Shop road, gravel, mountain, city and electric bikes plus parts and gear. Earn XP, unlock rewards." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%B2%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Scroll "ride" progress -->
+  <div class="ride-track" aria-hidden="true"><div class="ride-fill"></div><span class="ride-bike">🚴</span></div>
+
+  <div class="promo-bar">
+    <span>Free shipping on orders over <strong id="promoThreshold"></strong></span>
+    <span class="sep">•</span>
+    <button class="link-btn" data-action="open-spin">🎡 Spin today's wheel</button>
+  </div>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <button class="icon-btn menu-toggle" aria-label="Open menu" data-action="toggle-menu">☰</button>
+      <a href="#/" class="logo" aria-label="Cycle Central home">
+        <span class="logo-mark">CC</span><span class="logo-text">CYCLE<b>CENTRAL</b></span>
+      </a>
+      <nav class="main-nav" id="mainNav" aria-label="Main">
+        <div class="nav-item has-mega">
+          <a href="#/shop/bikes">Bikes</a>
+          <div class="mega" id="megaBikes"></div>
+        </div>
+        <div class="nav-item has-mega">
+          <a href="#/shop/parts">Parts & Gear</a>
+          <div class="mega" id="megaParts"></div>
+        </div>
+        <div class="nav-item"><a href="#/shop/sale">Sale</a></div>
+        <div class="nav-item"><button class="link-btn" data-action="open-quiz">Bike Finder</button></div>
+        <div class="nav-item"><a href="#/rewards">Rewards</a></div>
+      </nav>
+      <div class="header-actions">
+        <button class="xp-pill" data-action="go-rewards" title="Your rider level">
+          <span class="xp-level" id="xpLevel">Rookie</span>
+          <span class="xp-bar"><span class="xp-bar-fill" id="xpBarFill"></span></span>
+          <span class="xp-num" id="xpNum">0 XP</span>
+        </button>
+        <button class="icon-btn" aria-label="Compare" data-action="open-compare">⇄<span class="badge" id="compareCount" hidden>0</span></button>
+        <button class="icon-btn" aria-label="Cart" data-action="open-cart">🛒<span class="badge" id="cartCount" hidden>0</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <a href="#/" class="logo logo-footer"><span class="logo-mark">CC</span><span class="logo-text">CYCLE<b>CENTRAL</b></span></a>
+        <p class="muted">Bikes, parts and gear for every kind of rider in the Philippines.</p>
+      </div>
+      <div>
+        <h4>Shop</h4>
+        <a href="#/shop/bikes">Bikes</a><a href="#/shop/parts">Parts & Gear</a><a href="#/shop/sale">Sale</a>
+      </div>
+      <div>
+        <h4>Rider Club</h4>
+        <a href="#/rewards">Rewards & Badges</a>
+        <button class="link-btn" data-action="open-quiz">Bike Finder</button>
+        <button class="link-btn" data-action="open-spin">Daily Spin</button>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <a href="#/">Shipping</a><a href="#/">Returns</a><a href="#/">Contact us</a>
+      </div>
+    </div>
+    <p class="footer-legal muted">© <span id="year"></span> Cycle Central. Product images and inventory are placeholders.</p>
+  </footer>
+
+  <!-- Drawers & modals -->
+  <div class="overlay" id="overlay" data-action="close-all"></div>
+
+  <aside class="drawer" id="cartDrawer" aria-label="Cart">
+    <div class="drawer-head"><h3>Your Cart</h3><button class="icon-btn" data-action="close-all" aria-label="Close">✕</button></div>
+    <div class="ship-meter" id="shipMeter"></div>
+    <div class="drawer-body" id="cartBody"></div>
+    <div class="drawer-foot" id="cartFoot"></div>
+  </aside>
+
+  <div class="modal" id="quizModal" role="dialog" aria-modal="true" aria-label="Bike Finder"><div class="modal-card" id="quizCard"></div></div>
+  <div class="modal" id="spinModal" role="dialog" aria-modal="true" aria-label="Daily spin"><div class="modal-card" id="spinCard"></div></div>
+  <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-label="Compare"><div class="modal-card wide" id="compareCard"></div></div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
