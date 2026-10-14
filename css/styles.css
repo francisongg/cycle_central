@@ -91,7 +91,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 800; font-style:
   display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
 }
 .promo-bar .sep { opacity: .4; }
-.site-header { position: sticky; top: 0; z-index: 50; background: rgba(247,246,242,.95); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.site-header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: rgba(247,246,242,.95); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .header-inner { max-width: var(--max); margin: 0 auto; height: var(--header-h); padding: 0 24px; display: flex; align-items: center; gap: 28px; }
 .logo { display: flex; align-items: center; flex: 0 0 auto; }
 .logo img { display: block; height: 46px; width: auto; }

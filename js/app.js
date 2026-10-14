@@ -940,7 +940,16 @@
         break;
       }
       case "reset":
-        if (confirm("Reset all XP, badges, cart and favourites?")) { S = Object.assign({}, defaults, { cart: [], compare: [], favs: [], badges: [], viewed: [], catsSeen: [], codes: [] }); save(); renderXP(); renderCartCount(); route(); }
+        // Two-step confirm in the page itself (no browser dialogs)
+        if (el.dataset.armed !== "1") {
+          el.dataset.armed = "1";
+          el.textContent = "Tap again to erase XP, badges, cart and favourites";
+          setTimeout(() => { if (el.isConnected) { el.dataset.armed = ""; el.textContent = "Reset my progress"; } }, 4000);
+          break;
+        }
+        S = Object.assign({}, defaults, { cart: [], compare: [], favs: [], badges: [], viewed: [], catsSeen: [], codes: [] });
+        save(); renderXP(); renderCartCount(); route();
+        toast("Progress reset");
         break;
     }
   });
