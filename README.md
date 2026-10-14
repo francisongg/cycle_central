@@ -22,8 +22,15 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 - **Scroll "ride" bar**: a progress line with a rider that crosses the screen as you scroll. Toasts, confetti and level-up celebrations add to the effect.
 - Progress is saved in the browser's `localStorage`.
 
+## Branding
+This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):
+- **Colours**: Blue `#3c78c6` (primary), Cream `#eeebe3` (backgrounds), Brown `#92694b` (secondary and rewards), Charcoal `#1c2126` (text and dark surfaces).
+- **Type**: Inter Bold / Bold Italic for headings and buttons, Open Sauce Sans for body text. Open Sauce is self-hosted in `assets/fonts` under the OFL licence.
+- **Logo**: `assets/logo.svg` (dark wordmark), `assets/logo-light.svg` (footer), `assets/mark.svg` (mobile header) and `assets/favicon.svg` (round badge). All are vectors taken from the brand PDF.
+- **Vibe** (minimalist, innovative, fast): clean cream surfaces, italic headings like the wordmark, and the logo's triangle mosaic used as a light pattern.
+
 ## Customising
-- **Brand colours and fonts**: edit the tokens at the top of `css/styles.css` (`--brand`, `--ink`, `--bg`, fonts and so on). Everything else picks them up.
+- **Brand colours and fonts**: they live in the tokens at the top of `css/styles.css`.
 - **Inventory**: replace the placeholder items in `js/data.js`. Give a product an `image` URL to use a real photo in place of the generated illustration.
 - **Rewards tuning**: change levels, spin prizes and the free-shipping threshold in `js/data.js`. Change badge XP and level discounts in `js/app.js` (`BADGES`, `LEVEL_PERKS`).
 

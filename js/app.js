@@ -93,7 +93,7 @@
      PLACEHOLDER ARTWORK (SVG) — replaced when product.image is set
      ======================================================= */
   function bikeSVG(color = "#111", category = "road", opts = {}) {
-    const stroke = opts.light ? "#ffffff" : "#1a1a1a";
+    const stroke = opts.light ? "#eeebe3" : "#1c2126";
     const tire = { road: 6, gravel: 9, mountain: 12, city: 8, electric: 9 }[category] || 7;
     const R = 60, rx = 95, fx = 305, wy = 170;
     const bb = [190, 175], st = [168, 88], ht = [272, 82], hb = [280, 108];
@@ -150,15 +150,15 @@
   }
 
   function partSVG(icon, color = "var(--brand)") {
-    const k = "#1a1a1a";
+    const k = "#1c2126";
     const shapes = {
-      gear: `${cog(140, 125, 80, 24, k)}<circle cx="140" cy="125" r="44" fill="${color}"/>${cog(275, 140, 46, 14, k)}<circle cx="275" cy="140" r="22" fill="#f4f4f2"/><circle cx="140" cy="125" r="14" fill="#f4f4f2"/>`,
+      gear: `${cog(140, 125, 80, 24, k)}<circle cx="140" cy="125" r="44" fill="${color}"/>${cog(275, 140, 46, 14, k)}<circle cx="275" cy="140" r="22" fill="#eeebe3"/><circle cx="140" cy="125" r="14" fill="#eeebe3"/>`,
       brake: `<circle cx="180" cy="125" r="85" fill="none" stroke="${k}" stroke-width="16"/>${[...Array(10)].map((_, i) => { const a = i * Math.PI / 5; return `<circle cx="${180 + Math.cos(a) * 60}" cy="${125 + Math.sin(a) * 60}" r="8" fill="${k}"/>`; }).join("")}<circle cx="180" cy="125" r="26" fill="${k}"/><path d="M240 40 h60 a14 14 0 0 1 14 14 v50 h-74z" fill="${color}"/>`,
       bar: `<path d="M60 120 Q60 90 110 92 L290 92 Q340 90 340 120 Q340 170 300 175" fill="none" stroke="${k}" stroke-width="16" stroke-linecap="round"/><path d="M60 120 Q60 170 100 175" fill="none" stroke="${k}" stroke-width="16" stroke-linecap="round"/><rect x="180" y="70" width="40" height="44" rx="6" fill="${color}"/>`,
       wheel: `<circle cx="200" cy="125" r="100" fill="none" stroke="${k}" stroke-width="10"/><circle cx="200" cy="125" r="88" fill="none" stroke="${color}" stroke-width="18"/>${[...Array(12)].map((_, i) => { const a = i * Math.PI / 6; return `<line x1="200" y1="125" x2="${200 + Math.cos(a) * 78}" y2="${125 + Math.sin(a) * 78}" stroke="${k}" stroke-width="2"/>`; }).join("")}<circle cx="200" cy="125" r="12" fill="${k}"/>`,
       tire: `<circle cx="200" cy="125" r="92" fill="none" stroke="${k}" stroke-width="30"/><circle cx="200" cy="125" r="92" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="6 10"/>`,
       helmet: `<path d="M80 170 Q80 50 210 50 Q330 50 330 160 L300 170 Q280 130 220 128 L120 140 Z" fill="${k}"/><path d="M120 90 L180 70 M200 66 L260 70 M280 82 L310 110" stroke="${color}" stroke-width="10" stroke-linecap="round"/><path d="M110 175 L300 175" stroke="${color}" stroke-width="6"/>`,
-      computer: `<rect x="120" y="40" width="160" height="170" rx="22" fill="${k}"/><rect x="138" y="60" width="124" height="104" rx="8" fill="#f4f4f2"/><polyline points="146,140 170,120 190,130 214,96 238,110 254,84" fill="none" stroke="${color}" stroke-width="5"/><circle cx="200" cy="188" r="8" fill="${color}"/>`,
+      computer: `<rect x="120" y="40" width="160" height="170" rx="22" fill="${k}"/><rect x="138" y="60" width="124" height="104" rx="8" fill="#eeebe3"/><polyline points="146,140 170,120 190,130 214,96 238,110 254,84" fill="none" stroke="${color}" stroke-width="5"/><circle cx="200" cy="188" r="8" fill="${color}"/>`,
       light: `<rect x="70" y="100" width="110" height="50" rx="20" fill="${k}"/><circle cx="180" cy="125" r="18" fill="#fff"/><path d="M200 105 L320 70 L320 180 L200 145 Z" fill="${color}" opacity=".35"/><rect x="230" y="200" width="70" height="26" rx="10" fill="#d0021b"/>`,
       bottle: `<rect x="160" y="70" width="80" height="150" rx="22" fill="${color}"/><rect x="180" y="40" width="40" height="34" rx="6" fill="${k}"/><rect x="190" y="22" width="20" height="20" rx="4" fill="${k}"/><path d="M150 120 h100 M150 170 h100" stroke="${k}" stroke-width="4"/>`
     };
@@ -248,15 +248,15 @@
     const bikeCats = D.categories.filter((c) => c.type === "bike");
     const spinReady = S.lastSpin !== today();
     const slides = [
-      { cls: "hero-bg-1", eyebrow: "New season", title: "Ride further. Ride faster.", text: "Road, gravel, mountain, city and electric bikes, picked for Philippine roads and trails.", bike: bikes[0], cta: ["Shop bikes", "#/shop/bikes"] },
-      { cls: "hero-bg-2", eyebrow: "Bike Finder", title: "Find your perfect match", text: "Answer 4 quick questions and we'll match you with a bike. You also earn 75 XP.", bike: bikes[2], cta: ["Take the quiz", "quiz"] },
-      { cls: "hero-bg-3", eyebrow: "Rider Club", title: "Level up. Save more.", text: "Earn XP every time you shop. Higher levels unlock bigger member discounts.", bike: bikes[4], cta: ["See rewards", "#/rewards"] }
+      { cls: "hero-bg-1", color: "#3c78c6", eyebrow: "New season", title: "Ride further. Ride faster.", text: "Road, gravel, mountain, city and electric bikes, picked for Philippine roads and trails.", bike: bikes[0], cta: ["Shop bikes", "#/shop/bikes"] },
+      { cls: "hero-bg-2", color: "#92694b", eyebrow: "Bike Finder", title: "Find your perfect match", text: "Answer 4 quick questions and we'll match you with a bike. You also earn 75 XP.", bike: bikes[2], cta: ["Take the quiz", "quiz"] },
+      { cls: "hero-bg-3", color: "#3c78c6", eyebrow: "Rider Club", title: "Level up. Save more.", text: "Earn XP every time you shop. Higher levels unlock bigger member discounts.", bike: bikes[4], cta: ["See rewards", "#/rewards"] }
     ];
     app.innerHTML = `
       <section class="hero" id="hero">
         ${slides.map((s, i) => `
           <div class="hero-slide ${s.cls} ${i === 0 ? "active" : ""}">
-            <div class="hero-art">${bikeSVG(s.bike.colors[0] === "#111111" ? "#ff5a1f" : s.bike.colors[0], s.bike.category, { light: true })}</div>
+            <div class="hero-art">${bikeSVG(s.color, s.bike.category, { light: true })}</div>
             <div class="hero-content">
               <span class="eyebrow">${s.eyebrow}</span>
               <h1>${s.title}</h1>
@@ -295,7 +295,7 @@
               <div><h3>Bike Finder</h3><p>Not sure where to start? Take the 30-second quiz and we'll match you with a bike.</p></div>
               <div><button class="btn" data-action="open-quiz">Find my bike · +75 XP</button></div>
             </div>
-            <div class="game-card">
+            <div class="game-card earth">
               <span class="big-emoji">🎡</span>
               <div><h3>Daily Spin</h3><p>${spinReady ? "Spin once a day for discount codes, free shipping or bonus XP." : "You've already spun today. Come back tomorrow for another try."}</p></div>
               <div><button class="btn btn-brand" data-action="open-spin" ${spinReady ? "" : "disabled"}>${spinReady ? "Spin now" : "Back tomorrow"}</button></div>
@@ -624,7 +624,7 @@
     renderCartCount(); closeAll();
     app.innerHTML = `<div class="wrap empty" style="padding:100px 20px;color:var(--ink)">
       <div class="big">🏁</div><h1 style="font-size:64px">Order placed!</h1>
-      <p>Thanks for riding with Cycle Central. Total paid: <b>${peso(t.total)}</b></p>
+      <p>Thanks for riding with Cycle Central. See you on the road. Total paid: <b>${peso(t.total)}</b></p>
       <p class="muted">(This is a demo checkout. Payment integration comes next.)</p>
       <div class="hero-ctas" style="justify-content:center;margin-top:20px"><a class="btn btn-brand" href="#/rewards">See your rewards</a><a class="btn btn-ghost" href="#/">Keep shopping</a></div></div>`;
     window.scrollTo(0, 0);
@@ -708,17 +708,17 @@
 
   function wheelSVG() {
     const n = D.spinPrizes.length, seg = 360 / n, r = 150, c = 160;
-    const palette = ["var(--brand)", "#111111", "var(--gold)", "#f4f4f2"];
-    const ink = ["#fff", "#fff", "#111", "#111"];
+    const palette = ["#3c78c6", "#1c2126", "#92694b", "#eeebe3"];
+    const ink = ["#fff", "#eeebe3", "#fff", "#1c2126"];
     return `<svg viewBox="0 0 320 320" id="wheelSvg">
       ${D.spinPrizes.map((pr, i) => {
         const a0 = ((i * seg - 90 - seg / 2) * Math.PI) / 180, a1 = (((i + 1) * seg - 90 - seg / 2) * Math.PI) / 180;
         const x0 = c + r * Math.cos(a0), y0 = c + r * Math.sin(a0), x1 = c + r * Math.cos(a1), y1 = c + r * Math.sin(a1);
         const mid = i * seg;
         return `<path d="M${c} ${c} L${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1} Z" fill="${palette[i % 4]}" stroke="#fff" stroke-width="2"/>
-          <text x="${c}" y="${c - r + 34}" transform="rotate(${mid} ${c} ${c})" text-anchor="middle" font-family="Barlow Condensed, sans-serif" font-weight="800" font-size="17" fill="${ink[i % 4]}">${pr.label}</text>`;
+          <text x="${c}" y="${c - r + 34}" transform="rotate(${mid} ${c} ${c})" text-anchor="middle" font-family="Inter, sans-serif" font-style="italic" font-weight="800" font-size="15" fill="${ink[i % 4]}">${pr.label}</text>`;
       }).join("")}
-      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#111" stroke-width="6"/>
+      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#1c2126" stroke-width="6"/>
     </svg>`;
   }
 
@@ -810,8 +810,8 @@
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const cv = $("#confetti"), ctx = cv.getContext("2d");
     cv.width = innerWidth; cv.height = innerHeight;
-    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#ff5a1f";
-    const colors = [brand, "#111111", "#f5b700", "#ffffff", "#1f9d55"];
+    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#3c78c6";
+    const colors = [brand, "#1c2126", "#92694b", "#eeebe3", "#6e9fde"];
     const parts = Array.from({ length: 140 }, () => ({
       x: innerWidth / 2 + (Math.random() - 0.5) * 200, y: innerHeight / 2,
       vx: (Math.random() - 0.5) * 16, vy: -Math.random() * 16 - 4, s: Math.random() * 8 + 4,
