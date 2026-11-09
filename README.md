@@ -35,3 +35,22 @@ This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):
 - **Rewards tuning**: change levels, spin prizes and the free-shipping threshold in `js/data.js`. Change badge XP and level discounts in `js/app.js` (`BADGES`, `LEVEL_PERKS`).
 
 Checkout is a demo for now. No payment provider is connected yet.
+
+## Hosting (GitHub Pages + custom domain)
+`.github/workflows/pages.yml` publishes `index.html`, `css/`, `js/` and `assets/` to GitHub Pages on every push to the default branch.
+
+One-time setup:
+1. **Turn on Pages**: in the repo, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. Then re-run the "Deploy to GitHub Pages" workflow from the **Actions** tab, or push any change.
+2. **Add DNS records** at the domain's DNS provider (dot.ph):
+
+   | Type  | Host / Name | Value |
+   |-------|-------------|-------|
+   | A     | @ (blank)   | 185.199.108.153 |
+   | A     | @ (blank)   | 185.199.109.153 |
+   | A     | @ (blank)   | 185.199.110.153 |
+   | A     | @ (blank)   | 185.199.111.153 |
+   | CNAME | www         | francisongg.github.io |
+
+   Remove any other A, AAAA or CNAME records for `@` and `www` that point somewhere else (for example a parking page).
+3. **Set the domain**: in **Settings → Pages → Custom domain**, enter the domain (for example `yourdomain.ph`) and save. Once the DNS check passes, tick **Enforce HTTPS**. The certificate can take up to an hour.
+4. **Optional but recommended**: verify the domain under your GitHub profile **Settings → Pages → Add a domain**, so nobody else can claim it on GitHub.
