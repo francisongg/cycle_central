@@ -2,14 +2,18 @@
 
 An online store for bikes, parts and gear. The layout follows Canyon's site: a sticky header with mega-menus, a full-width hero, category tiles, and product rails. On top of that, the store is turned into a game.
 
-It's a static site with no build step. Open `index.html`, or serve the folder:
+It's a static site. A small build step saves a finished HTML page for every address, so search engines can read each page without running JavaScript.
 
 ```bash
-python3 -m http.server 8000   # then visit http://localhost:8000
+npm install           # once
+npm run build         # writes the public site to dist/
+npm run preview       # serves dist/ locally and prints the address
 ```
 
+For quick edits you can also serve the project folder (`python3 -m http.server 8000`) and open the home page. Clicking around works, but reloading a deeper page needs the built version.
+
 ## Features
-- **Shop**: hash-routed pages for home, category and shop listings, product detail and rewards. Filter by category, price, search and sort.
+- **Shop**: real page addresses for home (`/`), listings (`/bikes/`, `/bikes/road/`, `/parts/`, `/sale/`), products (`/products/aero-road-cf-8/`) and rewards (`/rewards/`). Filter by category, price, search and sort. Old `/#/...` links redirect to the new addresses.
 - **Product page**: colour swatches, frame sizes, a size suggester that works from your height, specs, and "Complete your build" upsells.
 - **Cart drawer**: a free-shipping progress meter, quick-add upsells, discount codes, and member-level discounts.
 - **Compare**: up to 3 bikes side by side, with the best price and rating highlighted.
@@ -29,6 +33,20 @@ This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):
 - **Logo**: `assets/logo.svg` (dark wordmark), `assets/logo-light.svg` (footer), `assets/mark.svg` (mobile header) and `assets/favicon.svg` (round badge). All are vectors taken from the brand PDF.
 - **Vibe** (minimalist, innovative, fast): clean cream surfaces, italic headings like the wordmark, and the logo's triangle mosaic used as a light pattern.
 
+## SEO
+What the build and app do for search engines and link previews:
+- **One HTML file per page** (`scripts/build.mjs` renders each page with headless Chromium), so the full text, headings and links are in the page source.
+- **Unique title and description** for every page, plus a **canonical link**, **Open Graph** and **Twitter card** tags.
+- **Structured data** (schema.org JSON-LD): `OnlineStore` and `WebSite` on every page, `BreadcrumbList` on listing and product pages, and `Product` with price, currency, stock and sale price on product pages. Ratings are left out of structured data until they come from real reviews.
+- **Share images**: a 1200×630 image for every product (`/og/products/<slug>.png`) and one for the site (`/assets/og-image.png`).
+- **`sitemap.xml`** and **`robots.txt`**, a real **404 page** (marked `noindex`), and `noindex` on the personal Favourites page.
+- **Speed**: fonts are self-hosted and the two main ones are preloaded, scripts are deferred, and there are no third-party requests.
+- **Icons**: SVG and PNG favicons, an Apple touch icon and a web app manifest.
+
+The build stops with an error if any page is missing a title, description, canonical link, a single H1 or valid structured data, or if two pages share a title.
+
+**Where to edit the words**: `js/data.js` holds the site name and description (`site`), the listing page titles, descriptions and intro text (`pages`), each category's `seoTitle` and `intro`, and each product's `description`. The live address comes from GitHub Pages during deployment (`SITE_URL`/`BASE_PATH`), falling back to `site.url`.
+
 ## Customising
 - **Brand colours and fonts**: they live in the tokens at the top of `css/styles.css`.
 - **Inventory**: replace the placeholder items in `js/data.js`. Give a product an `image` URL to use a real photo in place of the generated illustration.
@@ -37,7 +55,7 @@ This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):
 Checkout is a demo for now. No payment provider is connected yet.
 
 ## Hosting (GitHub Pages + custom domain)
-`.github/workflows/pages.yml` publishes `index.html`, `css/`, `js/` and `assets/` to GitHub Pages on every push to the default branch.
+`.github/workflows/pages.yml` runs `npm run build` and publishes `dist/` to GitHub Pages on every push to the default branch. It reads the live address from GitHub, so links and the sitemap use `https://cyclecentral.ph` once the custom domain is active.
 
 One-time setup:
 1. **Turn on Pages**: in the repo, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. Then re-run the "Deploy to GitHub Pages" workflow from the **Actions** tab, or push any change.
@@ -54,3 +72,7 @@ One-time setup:
    Remove any other A, AAAA or CNAME records for `@` and `www` that point somewhere else (for example a parking page).
 3. **Set the domain**: in **Settings → Pages → Custom domain**, enter the domain (for example `yourdomain.ph`) and save. Once the DNS check passes, tick **Enforce HTTPS**. The certificate can take up to an hour.
 4. **Optional but recommended**: verify the domain under your GitHub profile **Settings → Pages → Add a domain**, so nobody else can claim it on GitHub.
+
+After the domain works:
+5. **Google Search Console**: add `cyclecentral.ph` as a **Domain** property, add the TXT record it gives you in dot.ph's DNS Records, then submit `https://cyclecentral.ph/sitemap.xml` under **Sitemaps**.
+6. Re-run the deploy once (Actions tab → Deploy to GitHub Pages → Run workflow) so every page's links use the custom domain.

@@ -10,6 +10,147 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   /* =======================================================
+     ADDRESSES (real page URLs; "hash" mode for the Claude preview)
+     ======================================================= */
+  const metaContent = (n) => { const m = document.querySelector(`meta[name="${n}"]`); return m ? m.content : null; };
+  const MODE = metaContent("cc-router") === "hash" ? "hash" : "path";
+  const BASE = metaContent("cc-base") || "/";
+  const SITE = (metaContent("cc-site") || D.site.url).replace(/\/$/, "");
+  const PRERENDER = !!window.__CC_PRERENDER__; // set by the build while it saves each page
+
+  const slugify = (t) => t.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  (function assignSlugs() {
+    const used = new Set();
+    D.products.forEach((p) => {
+      const base = p.slug || slugify(p.name);
+      let s = base, n = 2;
+      while (used.has(s)) s = `${base}-${n++}`;
+      used.add(s); p.slug = s;
+    });
+  })();
+  const bySlug = (s) => D.products.find((p) => p.slug === s);
+
+  const PATHS = {
+    home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/",
+    cat: (c) => `${c.type === "bike" ? "bikes" : "parts"}/${c.id}/`,
+    product: (p) => `products/${p.slug}/`
+  };
+  const shopPath = (scope) => { const c = catOf(scope); return c ? PATHS.cat(c) : (PATHS[scope] ?? PATHS.bikes); };
+  const url = (path = "") => (MODE === "hash" ? "#/" + path : BASE + path);
+  const absUrl = (path = "") => SITE + BASE + path;
+  const absAsset = (src) => (/^https?:/.test(src) ? src : SITE + BASE + src.replace(/^\.?\//, ""));
+
+  function currentPath() {
+    if (MODE === "hash") return location.hash.replace(/^#\/?/, "");
+    let p = location.pathname;
+    p = p.startsWith(BASE) ? p.slice(BASE.length) : p.replace(/^\//, "");
+    return p.replace(/index\.html$/, "");
+  }
+  function navigate(path) {
+    if (MODE === "hash") { location.hash = "#/" + path; return; }
+    history.pushState(null, "", url(path));
+    route();
+  }
+  // Links shared from the first version of the site looked like /#/shop/road
+  function legacyHashPath() {
+    if (MODE !== "path" || !location.hash.startsWith("#/")) return null;
+    const [, page, arg] = location.hash.split("/");
+    if (page === "shop") return shopPath(arg || "bikes");
+    if (page === "product") { const p = byId(arg); return p ? PATHS.product(p) : PATHS.home; }
+    if (page === "rewards") return PATHS.rewards;
+    return PATHS.home;
+  }
+
+  /* =======================================================
+     SEARCH ENGINE TAGS (title, description, social cards, structured data)
+     ======================================================= */
+  const clip = (t, n = 158) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n - 1)).replace(/[,.;:]$/, "") + "…");
+  const DEFAULT_IMAGE = "assets/og-image.png";
+  const productImage = (p) => (p.image ? absAsset(p.image) : absUrl(`og/products/${p.slug}.png`));
+
+  function setMeta({ title, description, image, imageAlt, type = "website", noindex = false, crumbs = [], product = null }) {
+    document.title = title ? `${title} | ${D.site.name}` : `${D.site.name} | ${D.site.tagline}`;
+    if (MODE === "hash") return; // the preview build has no public address to describe
+    const head = document.head;
+    const find = (sel, make) => { let el = head.querySelector(sel); if (!el) { el = make(); head.appendChild(el); } return el; };
+    const named = (n, v) => { find(`meta[name="${n}"]`, () => { const m = document.createElement("meta"); m.setAttribute("name", n); return m; }).setAttribute("content", v); };
+    const prop = (n, v) => { find(`meta[property="${n}"]`, () => { const m = document.createElement("meta"); m.setAttribute("property", n); return m; }).setAttribute("content", v); };
+
+    const path = currentPath();
+    const canonical = absUrl(path);
+    const img = image || absAsset(DEFAULT_IMAGE);
+    const desc = clip(description || D.site.description);
+    named("description", desc);
+    named("robots", noindex ? "noindex, follow" : "index, follow, max-image-preview:large");
+    find('link[rel="canonical"]', () => { const l = document.createElement("link"); l.rel = "canonical"; return l; }).href = canonical;
+    prop("og:site_name", D.site.name);
+    prop("og:locale", D.site.locale);
+    prop("og:type", type);
+    prop("og:title", document.title);
+    prop("og:description", desc);
+    prop("og:url", canonical);
+    prop("og:image", img);
+    prop("og:image:width", "1200");
+    prop("og:image:height", "630");
+    prop("og:image:alt", imageAlt || `${D.site.name} – ${D.site.tagline}`);
+    named("twitter:card", "summary_large_image");
+    named("twitter:title", document.title);
+    named("twitter:description", desc);
+    named("twitter:image", img);
+    head.querySelectorAll('meta[property^="product:"]').forEach((m) => m.remove());
+    if (product) {
+      prop("product:price:amount", String(product.price));
+      prop("product:price:currency", D.site.currency);
+      prop("product:availability", product.stock === 0 ? "out of stock" : "in stock");
+    }
+
+    // Structured data for Google (schema.org)
+    const org = {
+      "@type": "OnlineStore", "@id": SITE + BASE + "#organization", name: D.site.name, url: absUrl(),
+      logo: { "@type": "ImageObject", url: absAsset("assets/logo-512.png"), width: 512, height: 512 },
+      description: D.site.description
+    };
+    const graph = [org, {
+      "@type": "WebSite", "@id": SITE + BASE + "#website", name: D.site.name, url: absUrl(),
+      inLanguage: D.site.language, publisher: { "@id": org["@id"] }
+    }];
+    if (crumbs.length) {
+      graph.push({
+        "@type": "BreadcrumbList",
+        itemListElement: [{ name: "Home", path: "" }, ...crumbs].map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: absUrl(c.path) }))
+      });
+    }
+    if (product) {
+      const p = product, cat = catOf(p.category);
+      const offer = {
+        "@type": "Offer", url: canonical, priceCurrency: D.site.currency, price: p.price,
+        availability: p.stock === 0 ? "https://schema.org/OutOfStock" : "https://schema.org/InStock", // stock left blank = in stock
+        itemCondition: "https://schema.org/NewCondition", seller: { "@id": org["@id"] }
+      };
+      if (p.compareAt) {
+        offer.priceSpecification = [
+          { "@type": "UnitPriceSpecification", price: p.price, priceCurrency: D.site.currency },
+          { "@type": "UnitPriceSpecification", priceType: "https://schema.org/StrikethroughPrice", price: p.compareAt, priceCurrency: D.site.currency }
+        ];
+      }
+      graph.push({
+        "@type": "Product", "@id": canonical + "#product", name: p.name, description: productDescription(p),
+        sku: p.id, image: [productImage(p)], category: cat ? cat.singular || cat.label : undefined,
+        url: canonical, offers: offer
+      });
+    }
+    find("#ld-json", () => { const sc = document.createElement("script"); sc.type = "application/ld+json"; sc.id = "ld-json"; return sc; })
+      .textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
+  }
+
+  function productDescription(p) {
+    if (p.description) return p.description;
+    const cat = catOf(p.category);
+    const specs = p.specs ? " " + Object.entries(p.specs).map(([k, v]) => `${k}: ${v}`).join(", ") + "." : "";
+    return `${p.name}, ${(cat && (cat.singular || cat.label) || "").toLowerCase()} from ${D.site.name}.${specs}`;
+  }
+
+  /* =======================================================
      STATE (persisted per browser)
      ======================================================= */
   const KEY = "cc_state_v1";
@@ -22,7 +163,7 @@
     try { return Object.assign({}, defaults, JSON.parse(localStorage.getItem(KEY)) || {}); }
     catch (e) { return Object.assign({}, defaults); }
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
+  function save() { if (PRERENDER) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
 
   /* =======================================================
      GAMIFICATION: XP, levels, badges
@@ -72,13 +213,13 @@
   }
 
   function award(badgeId) {
-    if (S.badges.includes(badgeId)) return;
+    if (PRERENDER || S.badges.includes(badgeId)) return;
     const b = BADGES.find((x) => x.id === badgeId);
     if (!b) return;
     S.badges.push(badgeId);
     save();
     addXP(b.xp, `${b.icon} Badge unlocked: ${b.name}`);
-    if (location.hash.startsWith("#/rewards")) route();
+    if (currentPath().startsWith(PATHS.rewards)) route();
   }
 
   function renderXP(pulse) {
@@ -127,7 +268,7 @@
       extras.push(`<path d="M120 96 L60 96 M70 96 L${rx} ${wy}" fill="none" stroke="${stroke}" stroke-width="4"/>`);
     }
     if (category === "mountain") extras.push(`<rect x="0" y="-5" width="34" height="10" rx="4" fill="${stroke}" transform="translate(150 128) rotate(-45)"/>`);
-    return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bike illustration">
+    return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" ${opts.label ? `role="img" aria-label="${esc(opts.label)}"` : 'aria-hidden="true" focusable="false"'}>
       ${wheel(rx)}${wheel(fx)}
       ${tube(bb, [rx, wy], 7)}${tube(st, [rx, wy], 6)}
       ${tube(bb, st)}${tube(st, ht)}${tube(bb, hb, 11)}${tube(ht, hb, 11)}
@@ -149,7 +290,7 @@
     return `<polygon points="${pts.join(" ")}" fill="${fill}"/>`;
   }
 
-  function partSVG(icon, color = "var(--brand)") {
+  function partSVG(icon, color = "var(--brand)", label = "") {
     const k = "#1c2126";
     const shapes = {
       gear: `${cog(140, 125, 80, 24, k)}<circle cx="140" cy="125" r="44" fill="${color}"/>${cog(275, 140, 46, 14, k)}<circle cx="275" cy="140" r="22" fill="#eeebe3"/><circle cx="140" cy="125" r="14" fill="#eeebe3"/>`,
@@ -162,20 +303,21 @@
       light: `<rect x="70" y="100" width="110" height="50" rx="20" fill="${k}"/><circle cx="180" cy="125" r="18" fill="#fff"/><path d="M200 105 L320 70 L320 180 L200 145 Z" fill="${color}" opacity=".35"/><rect x="230" y="200" width="70" height="26" rx="10" fill="#d0021b"/>`,
       bottle: `<rect x="160" y="70" width="80" height="150" rx="22" fill="${color}"/><rect x="180" y="40" width="40" height="34" rx="6" fill="${k}"/><rect x="190" y="22" width="20" height="20" rx="4" fill="${k}"/><path d="M150 120 h100 M150 170 h100" stroke="${k}" stroke-width="4"/>`
     };
-    return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Part illustration">${shapes[icon] || shapes.gear}</svg>`;
+    return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" ${label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true" focusable="false"'}>${shapes[icon] || shapes.gear}</svg>`;
   }
 
   function art(p, colorIdx = 0) {
     if (p.image) return `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`;
     return p.type === "bike"
-      ? bikeSVG((p.colors || ["#111"])[colorIdx] || p.colors[0], p.category, { suspension: /trail/i.test(p.name) })
-      : partSVG(p.icon);
+      ? bikeSVG((p.colors || ["#111"])[colorIdx] || p.colors[0], p.category, { suspension: /trail/i.test(p.name), label: p.name })
+      : partSVG(p.icon, undefined, p.name);
   }
 
   /* =======================================================
      UI HELPERS
      ======================================================= */
   function toast(msg, xp, cls = "") {
+    if (PRERENDER) return;
     const t = document.createElement("div");
     t.className = "toast " + cls;
     t.innerHTML = `<span>${msg}</span>${xp ? `<span class="xp">${xp}</span>` : ""}`;
@@ -216,14 +358,14 @@
     const fav = S.favs.includes(p.id);
     const cmp = S.compare.includes(p.id);
     return `<article class="card" data-id="${p.id}">
-      <a class="card-media" href="#/product/${p.id}">
+      <a class="card-media" href="${url(PATHS.product(p))}" tabindex="-1" aria-hidden="true">
         ${p.tag ? `<span class="tag ${tagCls}">${esc(p.tag)}</span>` : ""}
         <span class="art">${art(p)}</span>
       </a>
       <button class="icon-btn card-fav ${fav ? "on" : ""}" data-action="fav" data-id="${p.id}" aria-label="Save to favourites">${fav ? "♥" : "♡"}</button>
       <div class="card-body">
         <span class="card-cat">${esc(cat ? cat.label : "")}</span>
-        <a class="card-title" href="#/product/${p.id}">${esc(p.name)}</a>
+        <h3 class="card-title"><a href="${url(PATHS.product(p))}">${esc(p.name)}</a></h3>
         <div class="card-row">${priceHTML(p)}${stars(p.rating || 0)}</div>
         <div class="card-row">
           ${p.colors ? `<div class="swatches">${p.colors.map((c, i) => `<button class="swatch ${i === 0 ? "active" : ""}" style="background:${c}" data-action="swatch" data-id="${p.id}" data-i="${i}" aria-label="Colour option ${i + 1}"></button>`).join("")}</div>` : "<span></span>"}
@@ -248,9 +390,9 @@
     const bikeCats = D.categories.filter((c) => c.type === "bike");
     const spinReady = S.lastSpin !== today();
     const slides = [
-      { cls: "hero-bg-1", color: "#3c78c6", eyebrow: "New season", title: "Ride further. Ride faster.", text: "Road, gravel, mountain, city and electric bikes, picked for Philippine roads and trails.", bike: bikes[0], cta: ["Shop bikes", "#/shop/bikes"] },
+      { cls: "hero-bg-1", color: "#3c78c6", eyebrow: "New season", title: "Ride further. Ride faster.", text: "Road, gravel, mountain, city and electric bikes, picked for Philippine roads and trails.", bike: bikes[0], cta: ["Shop bikes", url(PATHS.bikes)] },
       { cls: "hero-bg-2", color: "#92694b", eyebrow: "Bike Finder", title: "Find your perfect match", text: "Answer 4 quick questions and we'll match you with a bike. You also earn 75 XP.", bike: bikes[2], cta: ["Take the quiz", "quiz"] },
-      { cls: "hero-bg-3", color: "#3c78c6", eyebrow: "Rider Club", title: "Level up. Save more.", text: "Earn XP every time you shop. Higher levels unlock bigger member discounts.", bike: bikes[4], cta: ["See rewards", "#/rewards"] }
+      { cls: "hero-bg-3", color: "#3c78c6", eyebrow: "Rider Club", title: "Level up. Save more.", text: "Earn XP every time you shop. Higher levels unlock bigger member discounts.", bike: bikes[4], cta: ["See rewards", url(PATHS.rewards)] }
     ];
     app.innerHTML = `
       <section class="hero" id="hero">
@@ -259,11 +401,11 @@
             <div class="hero-art">${bikeSVG(s.color, s.bike.category, { light: true })}</div>
             <div class="hero-content">
               <span class="eyebrow">${s.eyebrow}</span>
-              <h1>${s.title}</h1>
+              ${i === 0 ? `<h1 class="hero-title">${s.title}</h1>` : `<h2 class="hero-title">${s.title}</h2>`}
               <p>${s.text}</p>
               <div class="hero-ctas">
                 ${s.cta[1] === "quiz" ? `<button class="btn btn-brand" data-action="open-quiz">${s.cta[0]}</button>` : `<a class="btn btn-brand" href="${s.cta[1]}">${s.cta[0]}</a>`}
-                <a class="btn btn-ghost light" href="#/shop/parts">Parts & gear</a>
+                <a class="btn btn-ghost light" href="${url(PATHS.parts)}">Parts & gear</a>
               </div>
             </div>
           </div>`).join("")}
@@ -272,12 +414,12 @@
 
       <section class="section">
         <div class="wrap">
-          <div class="section-head"><div><h2>Shop by category</h2><p>Browse all five bike categories to earn the 🧭 Explorer badge.</p></div><a class="btn btn-ghost btn-sm" href="#/shop/bikes">All bikes →</a></div>
+          <div class="section-head"><div><h2>Shop by category</h2><p>Browse all five bike categories to earn the 🧭 Explorer badge.</p></div><a class="btn btn-ghost btn-sm" href="${url(PATHS.bikes)}">All bikes →</a></div>
           <div class="cat-grid">
             ${bikeCats.map((c) => {
               const sample = bikes.find((b) => b.category === c.id);
               const seen = S.catsSeen.includes(c.id);
-              return `<a class="cat-card" href="#/shop/${c.id}">
+              return `<a class="cat-card" href="${url(PATHS.cat(c))}">
                 <span class="arrow">${seen ? "✓" : "→"}</span>
                 <div><h3>${c.label}</h3><p>${c.blurb}</p></div>
                 ${bikeSVG(sample ? sample.colors[0] : "#111", c.id)}
@@ -303,7 +445,7 @@
             <div class="game-card">
               <span class="big-emoji">🏆</span>
               <div><h3>Rider Club</h3><p>You're a <b>${D.levels[levelIndex()].name}</b>. ${levelProgress().next ? `${levelProgress().toNext} XP until ${levelProgress().next.name}.` : "That's the top level."}</p></div>
-              <div><a class="btn btn-brand" href="#/rewards">View badges</a></div>
+              <div><a class="btn btn-brand" href="${url(PATHS.rewards)}">View badges</a></div>
             </div>
           </div>
         </div>
@@ -311,7 +453,7 @@
 
       <section class="section">
         <div class="wrap">
-          <div class="section-head"><div><h2>Featured bikes</h2><p>Hand-picked for this season.</p></div><a class="btn btn-ghost btn-sm" href="#/shop/bikes">View all →</a></div>
+          <div class="section-head"><div><h2>Featured bikes</h2><p>Hand-picked for this season.</p></div><a class="btn btn-ghost btn-sm" href="${url(PATHS.bikes)}">View all →</a></div>
           <div class="rail">${bikes.map(card).join("")}</div>
         </div>
       </section>
@@ -325,10 +467,25 @@
 
       <section class="section">
         <div class="wrap">
-          <div class="section-head"><div><h2>Parts & gear</h2><p>Upgrade your ride. Add a bike and 2 parts to your cart to earn 🔧 Full Build.</p></div><a class="btn btn-ghost btn-sm" href="#/shop/parts">Shop parts →</a></div>
+          <div class="section-head"><div><h2>Parts & gear</h2><p>Upgrade your ride. Add a bike and 2 parts to your cart to earn 🔧 Full Build.</p></div><a class="btn btn-ghost btn-sm" href="${url(PATHS.parts)}">Shop parts →</a></div>
           <div class="rail">${parts.map(card).join("")}</div>
         </div>
+      </section>
+
+      <section class="section alt">
+        <div class="wrap about-grid">
+          <div class="about-copy">
+            <h2>${esc(D.pages.home.aboutTitle)}</h2>
+            <p>${esc(D.pages.home.about)}</p>
+          </div>
+          <nav class="about-links" aria-label="Shop by category">
+            <h3>Shop by type</h3>
+            <ul>${D.categories.map((c) => `<li><a href="${url(PATHS.cat(c))}">${esc(c.seoTitle ? c.seoTitle.replace(/ for Sale in the Philippines$/, "") : c.label)}</a></li>`).join("")}
+              <li><a href="${url(PATHS.sale)}">Bikes and parts on sale</a></li></ul>
+          </nav>
+        </div>
       </section>`;
+    setMeta({});
     startHero();
   }
 
@@ -358,16 +515,19 @@
   const F = { cats: [], max: null, sort: "featured", q: "" };
 
   function viewShop(scope) {
-    let base, title, crumb;
-    if (scope === "bikes") { base = (p) => p.type === "bike"; title = "Bikes"; }
-    else if (scope === "parts") { base = (p) => p.type === "part"; title = "Parts & Gear"; }
-    else if (scope === "sale") { base = (p) => !!p.compareAt; title = "Sale"; }
-    else if (scope === "favourites") { base = (p) => S.favs.includes(p.id); title = "Favourites"; }
+    let base, title, crumb, seo;
+    const pg = D.pages;
+    if (scope === "bikes") { base = (p) => p.type === "bike"; title = "Bikes"; seo = pg.bikes; }
+    else if (scope === "parts") { base = (p) => p.type === "part"; title = "Parts & Gear"; seo = pg.parts; }
+    else if (scope === "sale") { base = (p) => !!p.compareAt; title = "Sale"; seo = pg.sale; }
+    else if (scope === "favourites") { base = (p) => S.favs.includes(p.id); title = "Favourites"; seo = { seoTitle: "Your Favourites", noindex: true }; }
     else {
       const c = catOf(scope);
       if (!c) return viewNotFound();
-      base = (p) => p.category === scope; title = c.label;
-      crumb = c.type === "bike" ? `<a href="#/shop/bikes">Bikes</a> / ` : `<a href="#/shop/parts">Parts & Gear</a> / `;
+      base = (p) => p.category === scope;
+      title = c.type === "bike" ? `${c.label} Bikes` : c.label;
+      crumb = { name: c.type === "bike" ? "Bikes" : "Parts & Gear", path: c.type === "bike" ? PATHS.bikes : PATHS.parts };
+      seo = { seoTitle: c.seoTitle || title, intro: c.intro, metaDescription: c.metaDescription };
       trackCategory(scope);
     }
     const pool = D.products.filter(base);
@@ -378,8 +538,9 @@
     app.innerHTML = `
       <div class="wrap">
         <div class="page-head">
-          <div class="crumbs"><a href="#/">Home</a> / ${crumb || ""}${title}</div>
+          <nav class="crumbs" aria-label="Breadcrumb"><a href="${url()}">Home</a> / ${crumb ? `<a href="${url(crumb.path)}">${crumb.name}</a> / ` : ""}<span aria-current="page">${title}</span></nav>
           <h1>${title}</h1>
+          ${seo.intro ? `<p class="page-intro">${esc(seo.intro)}</p>` : ""}
         </div>
         <div class="shop-layout">
           <aside class="filters">
@@ -389,8 +550,8 @@
             <div class="muted" id="priceLabel">Up to ${peso(F.max)}</div>
             <h4>Quick picks</h4>
             <div class="chip-list">
-              <a class="chip" href="#/shop/sale">🏷️ On sale</a>
-              <a class="chip" href="#/shop/favourites">♥ Favourites (${S.favs.length})</a>
+              <a class="chip" href="${url(PATHS.sale)}">🏷️ On sale</a>
+              <a class="chip" href="${url(PATHS.favourites)}" rel="nofollow">♥ Favourites (${S.favs.length})</a>
               <button class="chip" data-action="open-quiz">💘 Bike Finder</button>
             </div>
           </aside>
@@ -420,6 +581,12 @@
     };
     viewShop.draw = draw;
     draw();
+    setMeta({
+      title: seo.seoTitle || title,
+      description: seo.metaDescription || seo.intro || `${title} at ${D.site.name}. Prices in Philippine pesos.`,
+      noindex: !!seo.noindex,
+      crumbs: [...(crumb ? [crumb] : []), { name: title, path: currentPath() }]
+    });
     $("#priceRange").addEventListener("input", (e) => { F.max = +e.target.value; $("#priceLabel").textContent = `Up to ${peso(F.max)}`; draw(); });
     $("#searchBox").addEventListener("input", (e) => { F.q = e.target.value; draw(); });
     $("#sortSel").addEventListener("change", (e) => { F.sort = e.target.value; draw(); });
@@ -442,7 +609,7 @@
   function viewProduct(id) {
     const p = byId(id);
     if (!p) return viewNotFound();
-    PDP.size = null; PDP.color = 0; PDP.qty = 1;
+    PDP.id = id; PDP.size = null; PDP.color = 0; PDP.qty = 1;
     if (!S.viewed.includes(id)) {
       S.viewed.push(id); save();
       award("first-look");
@@ -452,10 +619,12 @@
     const c = catOf(p.category);
     const related = D.products.filter((x) => x.id !== p.id && (x.category === p.category || (p.type === "bike" && x.type === "part"))).slice(0, 4);
     const lvl = levelIndex();
+    const top = p.type === "bike" ? { name: "Bikes", path: PATHS.bikes } : { name: "Parts & Gear", path: PATHS.parts };
+    const catTitle = c.type === "bike" ? `${c.label} Bikes` : c.label;
 
     app.innerHTML = `
       <div class="wrap">
-        <div class="crumbs" style="padding-top:24px"><a href="#/">Home</a> / <a href="#/shop/${p.type === "bike" ? "bikes" : "parts"}">${p.type === "bike" ? "Bikes" : "Parts & Gear"}</a> / <a href="#/shop/${p.category}">${c.label}</a> / ${esc(p.name)}</div>
+        <nav class="crumbs" style="padding-top:24px" aria-label="Breadcrumb"><a href="${url()}">Home</a> / <a href="${url(top.path)}">${top.name}</a> / <a href="${url(PATHS.cat(c))}">${esc(catTitle)}</a> / <span aria-current="page">${esc(p.name)}</span></nav>
         <div class="pdp">
           <div class="pdp-media" id="pdpArt">${art(p)}</div>
           <div>
@@ -464,6 +633,7 @@
             <div class="card-row" style="justify-content:flex-start;gap:16px">${priceHTML(p)}${stars(p.rating || 0)}</div>
             ${LEVEL_PERKS[lvl] ? `<p class="xp-hint">${LEVEL_ICONS[lvl]} As a ${D.levels[lvl].name}, you save ${LEVEL_PERKS[lvl]}% at checkout: ${peso(p.price * (1 - LEVEL_PERKS[lvl] / 100))}</p>` : `<p class="xp-hint">Earn ${Math.max(1, Math.floor(p.price / 1000))} XP with this purchase. Level up to unlock member discounts.</p>`}
             ${p.stock && p.stock <= 5 ? `<p class="stock-low">🔥 Only ${p.stock} left in stock</p>` : ""}
+            <p class="pdp-desc">${esc(productDescription(p))}</p>
 
             ${p.colors ? `<div class="pdp-block"><h4>Colour</h4><div class="swatches">${p.colors.map((col, i) => `<button class="swatch ${i === 0 ? "active" : ""}" style="background:${col};width:30px;height:30px" data-action="pdp-color" data-i="${i}" aria-label="Colour ${i + 1}"></button>`).join("")}</div></div>` : ""}
 
@@ -490,13 +660,22 @@
         </div>
         ${related.length ? `<section class="section" style="padding-top:0"><div class="section-head"><h2>${p.type === "bike" ? "Complete your build" : "You may also like"}</h2></div><div class="rail">${related.map(card).join("")}</div></section>` : ""}
       </div>`;
+    setMeta({
+      title: `${p.name} – ${c.singular || c.label}`,
+      description: `${productDescription(p)} ${peso(p.price)} at ${D.site.name}.`,
+      type: "product",
+      image: productImage(p),
+      imageAlt: p.name,
+      crumbs: [top, { name: catTitle, path: PATHS.cat(c) }, { name: p.name, path: PATHS.product(p) }],
+      product: p
+    });
   }
 
   function viewRewards() {
     const i = levelIndex(), prog = levelProgress();
     app.innerHTML = `
       <div class="wrap">
-        <div class="page-head"><div class="crumbs"><a href="#/">Home</a> / Rewards</div><h1>Rider Club</h1></div>
+        <div class="page-head"><nav class="crumbs" aria-label="Breadcrumb"><a href="${url()}">Home</a> / <span aria-current="page">Rewards</span></nav><h1>Rider Club</h1></div>
         <section class="section" style="padding-top:32px">
           <div class="rider-card">
             <div class="rider-avatar">${LEVEL_ICONS[i]}</div>
@@ -529,10 +708,12 @@
           <p style="margin-top:28px"><button class="btn btn-ghost btn-sm" data-action="reset">Reset my progress</button></p>
         </section>
       </div>`;
+    setMeta({ title: D.pages.rewards.seoTitle, description: D.pages.rewards.metaDescription, crumbs: [{ name: "Rewards", path: PATHS.rewards }] });
   }
 
   function viewNotFound() {
-    app.innerHTML = `<div class="wrap empty" style="padding:120px 20px"><div class="big">🛞</div><h2>Flat tyre! Page not found.</h2><a class="btn btn-brand" href="#/">Back to home</a></div>`;
+    app.innerHTML = `<div class="wrap empty" style="padding:120px 20px"><div class="big">🛞</div><h1>Flat tyre! Page not found.</h1><p>The page you're looking for doesn't exist or has moved.</p><a class="btn btn-brand" href="${url()}">Back to home</a></div>`;
+    setMeta({ title: "Page not found", noindex: true });
   }
 
   /* =======================================================
@@ -587,7 +768,7 @@
       : `🚚 Add <b>${peso(left)}</b> more for <b>free shipping</b><div class="meter"><span style="width:${Math.min(100, (t.sub / D.freeShippingThreshold) * 100)}%"></span></div>`;
 
     if (!S.cart.length) {
-      $("#cartBody").innerHTML = `<div class="empty"><div class="big">🛒</div><p>Your cart is empty.</p><a class="btn btn-brand" href="#/shop/bikes" data-action="close-all">Start shopping</a></div>`;
+      $("#cartBody").innerHTML = `<div class="empty"><div class="big">🛒</div><p>Your cart is empty.</p><a class="btn btn-brand" href="${url(PATHS.bikes)}" data-action="close-all">Start shopping</a></div>`;
       $("#cartFoot").innerHTML = "";
       return;
     }
@@ -626,7 +807,7 @@
       <div class="big">🏁</div><h1 style="font-size:64px">Order placed!</h1>
       <p>Thanks for riding with Cycle Central. See you on the road. Total paid: <b>${peso(t.total)}</b></p>
       <p class="muted">(This is a demo checkout. Payment integration comes next.)</p>
-      <div class="hero-ctas" style="justify-content:center;margin-top:20px"><a class="btn btn-brand" href="#/rewards">See your rewards</a><a class="btn btn-ghost" href="#/">Keep shopping</a></div></div>`;
+      <div class="hero-ctas" style="justify-content:center;margin-top:20px"><a class="btn btn-brand" href="${url(PATHS.rewards)}">See your rewards</a><a class="btn btn-ghost" href="${url()}">Keep shopping</a></div></div>`;
     window.scrollTo(0, 0);
     confetti();
     addXP(xp, "Order XP");
@@ -691,10 +872,10 @@
         ${art(best.p)}
         <p>${priceHTML(best.p)} · ${catOf(best.p.category).label}</p>
         <div class="hero-ctas" style="justify-content:center">
-          <a class="btn btn-brand" href="#/product/${best.p.id}" data-action="close-all">View bike</a>
+          <a class="btn btn-brand" href="${url(PATHS.product(best.p))}" data-action="close-all">View bike</a>
           <button class="btn btn-ghost" data-action="quiz-restart">Retake quiz</button>
         </div>
-        <p class="muted" style="margin-top:18px;font-size:13px">Also worth a look: ${alt.map((x) => `<a href="#/product/${x.p.id}" data-action="close-all" style="text-decoration:underline">${esc(x.p.name)}</a>`).join(" · ")}</p>
+        <p class="muted" style="margin-top:18px;font-size:13px">Also worth a look: ${alt.map((x) => `<a href="${url(PATHS.product(x.p))}" data-action="close-all" style="text-decoration:underline">${esc(x.p.name)}</a>`).join(" · ")}</p>
       </div>`;
     confetti();
     award("matchmaker");
@@ -794,7 +975,7 @@
     const maxRating = Math.max(...items.map((p) => p.rating || 0));
     card.innerHTML = `${close}<h2 style="font-size:40px">Compare bikes</h2>
       <div style="overflow-x:auto"><table class="cmp-table">
-        <tr><th></th>${items.map((p) => `<td>${art(p)}<a href="#/product/${p.id}" data-action="close-all"><b>${esc(p.name)}</b></a><br><button class="link-btn muted" data-action="compare-remove" data-id="${p.id}">Remove</button></td>`).join("")}</tr>
+        <tr><th></th>${items.map((p) => `<td>${art(p)}<a href="${url(PATHS.product(p))}" data-action="close-all"><b>${esc(p.name)}</b></a><br><button class="link-btn muted" data-action="compare-remove" data-id="${p.id}">Remove</button></td>`).join("")}</tr>
         <tr><th>Price</th>${items.map((p) => `<td class="${p.price === minPrice && items.length > 1 ? "best" : ""}">${peso(p.price)}${p.price === minPrice && items.length > 1 ? " 💰" : ""}</td>`).join("")}</tr>
         <tr><th>Rating</th>${items.map((p) => `<td class="${p.rating === maxRating && items.length > 1 ? "best" : ""}">${(p.rating || 0).toFixed(1)} ★</td>`).join("")}</tr>
         <tr><th>Category</th>${items.map((p) => `<td>${catOf(p.category).label}</td>`).join("")}</tr>
@@ -842,7 +1023,7 @@
       case "open-quiz": quiz.step = 0; quiz.a = {}; renderQuiz(); openPanel("#quizModal"); break;
       case "open-spin": renderSpin(); openPanel("#spinModal"); break;
       case "open-compare": renderCompare(); openPanel("#compareModal"); break;
-      case "go-rewards": location.hash = "#/rewards"; break;
+      case "go-rewards": navigate(PATHS.rewards); break;
       case "slide": startHero.go && startHero.go(+el.dataset.i); break;
 
       case "add":
@@ -869,7 +1050,7 @@
       }
 
       case "pdp-color": {
-        const p = byId(location.hash.split("/")[2]);
+        const p = byId(PDP.id);
         PDP.color = +el.dataset.i;
         $("#pdpArt").innerHTML = art(p, PDP.color);
         $$("[data-action=pdp-color]").forEach((s, k) => s.classList.toggle("active", k === PDP.color));
@@ -971,18 +1152,39 @@
      ROUTER
      ======================================================= */
   function route() {
-    const [, page, arg] = (location.hash || "#/").split("/");
+    const path = currentPath();
+    const segs = path.split("/").filter(Boolean);
+    const [a, b] = segs;
     clearInterval(heroTimer);
     closeAll();
-    if (!page) viewHome();
-    else if (page === "shop") viewShop(arg || "bikes");
-    else if (page === "product") viewProduct(arg);
-    else if (page === "rewards") viewRewards();
+    if (!a) viewHome();
+    else if ((a === "bikes" || a === "parts") && segs.length === 1) viewShop(a);
+    else if ((a === "bikes" || a === "parts") && segs.length === 2 && catOf(b) && catOf(b).type === a.slice(0, -1)) viewShop(b);
+    else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
+    else if (a === "rewards" && segs.length === 1) viewRewards();
+    else if (a === "products" && segs.length === 2 && bySlug(b)) viewProduct(bySlug(b).id);
     else viewNotFound();
     window.scrollTo(0, 0);
     onScroll();
+    document.documentElement.dataset.route = path; // lets the build know the page has rendered
   }
-  addEventListener("hashchange", route);
+
+  if (MODE === "hash") addEventListener("hashchange", route);
+  else {
+    addEventListener("popstate", route);
+    addEventListener("hashchange", () => { const lp = legacyHashPath(); if (lp !== null) { history.replaceState(null, "", url(lp)); route(); } });
+    // Internal links change the page without a full reload
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = e.target.closest("a[href]");
+      if (!a || a.target || a.hasAttribute("download")) return;
+      const u = new URL(a.href, location.href);
+      if (u.origin !== location.origin || !u.pathname.startsWith(BASE) || u.hash) return;
+      e.preventDefault();
+      if (u.pathname + u.search !== location.pathname + location.search) { history.pushState(null, "", u.pathname + u.search); route(); }
+      else closeAll();
+    });
+  }
 
   /* =======================================================
      INIT
@@ -991,11 +1193,15 @@
     const tile = (c) => {
       const sample = D.products.find((p) => p.category === c.id);
       const pic = c.type === "bike" ? bikeSVG(sample ? sample.colors[0] : "#111", c.id) : partSVG(sample ? sample.icon : "gear");
-      return `<a class="mega-tile" href="#/shop/${c.id}">${pic}<strong>${c.label}</strong><span>${c.blurb}</span></a>`;
+      return `<a class="mega-tile" href="${url(PATHS.cat(c))}">${pic}<strong>${c.label}</strong><span>${c.blurb}</span></a>`;
     };
     $("#megaBikes").innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "bike").map(tile).join("")}</div>`;
     $("#megaParts").innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "part").map(tile).join("")}</div>`;
   }
+
+  // Header and footer links are written as data-path so they work at any base address
+  $$("[data-path]").forEach((a) => a.setAttribute("href", url(a.dataset.path)));
+  if (MODE === "path") { const lp = legacyHashPath(); if (lp !== null) history.replaceState(null, "", url(lp)); }
 
   $("#promoThreshold").textContent = peso(D.freeShippingThreshold);
   $("#year").textContent = new Date().getFullYear();
@@ -1003,4 +1209,21 @@
   renderXP();
   renderCartCount();
   route();
+
+  // Used by the build script to list every page and draw social images
+  if (PRERENDER) {
+    window.__CC__ = {
+      routes: [
+        { path: PATHS.home, priority: "1.0" },
+        { path: PATHS.bikes, priority: "0.9" }, { path: PATHS.parts, priority: "0.9" },
+        ...D.categories.map((c) => ({ path: PATHS.cat(c), priority: "0.8" })),
+        { path: PATHS.sale, priority: "0.7" },
+        ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7" })),
+        { path: PATHS.rewards, priority: "0.4" },
+        { path: PATHS.favourites, noindex: true }
+      ],
+      brandArt: bikeSVG("#3c78c6", "road"),
+      products: D.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, price: peso(p.price), compareAt: p.compareAt ? peso(p.compareAt) : "", category: (catOf(p.category) || {}).singular || "", hasImage: !!p.image, art: art(p) }))
+    };
+  }
 })();

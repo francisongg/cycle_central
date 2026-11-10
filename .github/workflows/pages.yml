@@ -1,6 +1,7 @@
 name: Deploy to GitHub Pages
 
-# Publishes the static site whenever the default branch changes.
+# Builds the site (one HTML file per page, sitemap, share images) and publishes it
+# whenever the default branch changes.
 on:
   push:
   workflow_dispatch:
@@ -23,14 +24,23 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Collect site files
-        run: |
-          mkdir -p _site
-          cp -r index.html css js assets _site/
-          touch _site/.nojekyll
-      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Build site
+        run: npm run build
+        env:
+          # The live address: https://cyclecentral.ph once the custom domain is active,
+          # otherwise https://<user>.github.io with base path /cycle_central
+          SITE_URL: ${{ steps.pages.outputs.origin }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4

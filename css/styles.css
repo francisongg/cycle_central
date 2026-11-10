@@ -1,9 +1,14 @@
 /* =========================================================
    CYCLE CENTRAL BRAND TOKENS
    Palette: Blue #3c78c6 · Cream #eeebe3 · Brown #92694b · Charcoal #1c2126
-   Type: Inter Bold / Bold Italic (headings) · Open Sauce Sans (body)
+   Type: Inter Bold / Bold Italic (headings) · Open Sauce Sans (body), both self-hosted
    ========================================================= */
-@font-face { font-family: "Open Sauce Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("../assets/fonts/open-sauce-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-style: normal; font-display: swap; src: url("../assets/fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-style: normal; font-display: swap; src: url("../assets/fonts/inter-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 800; font-style: normal; font-display: swap; src: url("../assets/fonts/inter-latin-800-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-style: italic; font-display: swap; src: url("../assets/fonts/inter-latin-700-italic.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 800; font-style: italic; font-display: swap; src: url("../assets/fonts/inter-latin-800-italic.woff2") format("woff2"); }
+@font-face { font-family: "Open Sauce Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("../assets/fonts/open-sauce-sans-latin-400-normal.woff") format("woff"); }
 @font-face { font-family: "Open Sauce Sans"; font-weight: 700; font-style: normal; font-display: swap; src: url("../assets/fonts/open-sauce-sans-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: "Open Sauce Sans"; font-weight: 700; font-style: italic; font-display: swap; src: url("../assets/fonts/open-sauce-sans-latin-700-italic.woff2") format("woff2"); }
 
@@ -137,7 +142,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 800; font-style:
 @keyframes rollIn { from { transform: translateX(40%); opacity: 0; } }
 .hero-content { position: relative; z-index: 2; max-width: var(--max); width: 100%; margin: 0 auto; padding: 0 24px 72px; }
 .hero-content .eyebrow { display: inline-block; background: var(--brand); color: var(--brand-ink); font-weight: 700; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; padding: 5px 10px; border-radius: var(--radius); margin-bottom: 18px; }
-.hero h1 { font-size: clamp(52px, 9vw, 128px); font-weight: 800; max-width: 11ch; }
+.hero .hero-title { font-size: clamp(52px, 9vw, 128px); font-weight: 800; max-width: 11ch; }
 .hero p { font-size: 18px; max-width: 46ch; opacity: .85; margin: 0 0 26px; }
 .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
 .hero-dots { position: absolute; z-index: 3; right: 24px; bottom: 32px; display: flex; gap: 8px; }
@@ -413,14 +418,14 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 800; font-style:
 .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .hero-art { place-items: center end; }
 .hero-art svg { width: min(62vw, 860px); transform: translateX(6%); opacity: .9; }
-.hero h1 { text-shadow: 0 4px 30px rgba(0,0,0,.45); }
+.hero .hero-title { text-shadow: 0 4px 30px rgba(0,0,0,.45); }
 .toasts .toast:nth-last-child(n+4) { display: none; }
 @media (max-width: 600px) {
   .promo-bar .sep { display: none; }
   .hero { align-items: stretch; min-height: 700px; }
   .hero-art { place-items: start center; padding-top: 28px; }
   .hero-art svg { width: 92vw; transform: none; }
-  .hero h1 { font-size: 56px; }
+  .hero .hero-title { font-size: 56px; }
 }
 
 /* ---------- Brand touches ---------- */
@@ -460,5 +465,20 @@ body { font-weight: 400; }
 .tag.new { background: var(--ink); }
 .site-footer { background: var(--ink); }
 .game-card.earth .btn { background: var(--ink); border-color: var(--ink); }
-.hero h1 { font-size: clamp(46px, 6.4vw, 96px); max-width: 9ch; }
+.hero .hero-title { font-size: clamp(46px, 6.4vw, 96px); max-width: 9ch; }
 @media (max-width: 600px) { .hero-art svg { width: 76vw; } .hero-art { padding-top: 18px; } }
+
+/* ---------- SEO content blocks ---------- */
+.card-title { margin: 0; }
+.card-title a { color: inherit; }
+.page-intro { max-width: 65ch; margin: 12px 0 0; color: var(--ink-2); font-size: 16px; }
+.pdp-desc { max-width: 60ch; color: var(--ink-2); margin: 12px 0 0; }
+.about-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; align-items: start; }
+.about-copy h2 { font-size: clamp(30px, 3.6vw, 44px); }
+.about-copy p { max-width: 65ch; color: var(--ink-2); font-size: 16px; margin: 0; }
+.about-links h3 { font-size: 20px; }
+.about-links ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.about-links a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.about-links a:hover { color: var(--brand-dark); text-decoration-color: currentColor; }
+.footer-soon { display: block; color: #8b8f93; font-size: 14px; margin: 6px 0; }
+@media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; gap: 24px; } }
