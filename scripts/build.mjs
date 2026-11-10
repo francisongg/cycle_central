@@ -25,7 +25,9 @@ const data = (() => {
 })();
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-const SITE_URL = (process.env.SITE_URL || data.site.url).replace(/\/$/, "");
+// Always publish https:// addresses. GitHub reports http:// until "Enforce HTTPS" is on,
+// but search engines should only ever see the secure address.
+const SITE_URL = (process.env.SITE_URL || data.site.url).replace(/\/$/, "").replace(/^http:\/\/(?!127\.0\.0\.1|localhost)/, "https://");
 const BASE = ("/" + (process.env.BASE_PATH || "/").replace(/^\/+|\/+$/g, "") + "/").replace(/^\/\/$/, "/");
 const today = new Date().toISOString().slice(0, 10);
 
