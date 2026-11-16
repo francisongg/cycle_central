@@ -2,15 +2,29 @@
  * PLACEHOLDER INVENTORY
  * ---------------------
  * Replace these entries with the real inventory. Each item needs:
- *   id, type ("bike" | "part"), category, name, price (PHP), and optionally
- *   compareAt (original price), tag, colors, specs, rating, stock, image.
- * If `image` is set (a URL/path), it is used instead of the generated SVG.
+ *   id, type ("bike" | "part"), category, name, price (PHP)
+ * and can have:
+ *   compareAt     original price, shown crossed out (the item counts as "on sale")
+ *   tag           "New" | "Hot" (a Sale tag is added automatically from compareAt)
+ *   colors        list of frame colours
+ *   stock         units left; leave it out for "in stock", 0 = sold out
+ *   image         URL/path of a product photo (used instead of the drawn illustration)
+ *   description   one or two sentences for the product page and Google snippet
+ *   slug          web address, e.g. "aero-road-cf-8" -> /products/aero-road-cf-8/
+ *   rating + reviews   star rating and number of reviews. Stars only show when
+ *                      `reviews` is set, so ratings always come from real reviews.
  *
- * SEO fields (all optional; sensible defaults are generated when missing):
- *   product.description  one or two sentences shown on the product page and
- *                        used for its Google snippet
- *   product.slug         web address, e.g. "aero-road-cf-8" -> /products/aero-road-cf-8/
- *   category.seoTitle / category.intro / category.metaDescription
+ * Bikes only:
+ *   bestFor       a few words: what this bike is best at (shown on cards)
+ *   fit           { terrain: "road"|"mixed"|"trail"|"city",
+ *                   goal: "speed"|"fitness"|"adventure"|"commute",
+ *                   level: "beginner"|"intermediate"|"advanced" }
+ *                 The Bike Finder uses this to rank bikes for a shopper.
+ *   specs         Use these names so cards, filters and compare line up:
+ *                 Frame, Fork, Suspension, Groupset, Gearing, Brakes, Wheels, Tires,
+ *                 Weight ("9.2 kg"), Motor, Battery, Range, Extras
+ *
+ * Categories and listing pages: seoTitle / intro / metaDescription (all optional).
  */
 window.CC_DATA = {
   // Site-wide settings used for page titles, links and Google results
@@ -18,7 +32,7 @@ window.CC_DATA = {
     name: "Cycle Central",
     url: "https://cyclecentral.ph",
     tagline: "Online Bike Shop in the Philippines",
-    description: "Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Compare bikes, take the Bike Finder quiz and earn rewards.",
+    description: "Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Set your budget, compare specs side by side and find the right bike.",
     locale: "en_PH",
     language: "en-PH",
     currency: "PHP"
@@ -28,11 +42,11 @@ window.CC_DATA = {
   pages: {
     home: {
       aboutTitle: "Bike shop in the Philippines",
-      about: "Cycle Central sells road, gravel, mountain, city and electric bikes, plus components, wheels, tires and riding gear. Browse by category, compare bikes side by side, or take the Bike Finder quiz to find the right fit. Every purchase earns XP in the Rider Club, which unlocks member discounts. All prices are in Philippine pesos."
+      about: "Cycle Central sells road, gravel, mountain, city and electric bikes, plus components, wheels, tires and riding gear. Set your budget to see the best bikes for it, compare specs side by side, or browse by category. Every purchase earns XP in the Rider Club, which unlocks member discounts. All prices are in Philippine pesos."
     },
     bikes: {
       seoTitle: "Bikes for Sale in the Philippines",
-      intro: "Road, gravel, mountain, city and electric bikes in one place. Filter by type and price, compare up to three bikes side by side, or take the Bike Finder quiz to get matched.",
+      intro: "Road, gravel, mountain, city and electric bikes in one place. Filter by type and price, compare up to three bikes side by side, or let the Bike Finder pick the best ones for your budget.",
       metaDescription: "Shop road, gravel, mountain, city and electric bikes at Cycle Central. Filter by price, compare bikes side by side and find your match with the Bike Finder."
     },
     parts: {
@@ -44,6 +58,11 @@ window.CC_DATA = {
       seoTitle: "Bike Sale: Discounted Bikes, Parts & Gear",
       intro: "Bikes, parts and gear with reduced prices. The original price is shown crossed out next to the sale price.",
       metaDescription: "Discounted bikes, parts and cycling gear at Cycle Central. See current sale prices on road and mountain bikes, components and accessories."
+    },
+    finder: {
+      seoTitle: "Bike Finder: Find the Best Bike for Your Budget",
+      intro: "Set your budget and how you ride. We rank every bike in the shop for you and explain why each one fits.",
+      metaDescription: "Tell Cycle Central your budget and where you ride. The Bike Finder ranks road, gravel, mountain, city and electric bikes for you and explains each pick."
     },
     rewards: {
       seoTitle: "Rider Club Rewards",
@@ -80,74 +99,125 @@ window.CC_DATA = {
 
   products: [
     // ---- Bikes ----
-    { id: "b1", type: "bike", category: "road", name: "Aero Road CF 8",
-      description: "A carbon aero road bike with a 12-speed electronic groupset and 50mm carbon wheels, built for fast group rides and racing.", price: 189000, compareAt: 215000, tag: "Sale",
-      colors: ["#111111", "#e63946", "#f1faee"], rating: 4.8, stock: 4,
-      specs: { Frame: "Carbon", Groupset: "12-speed electronic", Weight: "7.6 kg", Wheels: "50mm carbon" },
-      quiz: { terrain: "road", goal: "speed", level: "advanced" } },
-    { id: "b2", type: "bike", category: "road", name: "Endurance AL 6",
-      description: "An aluminium endurance road bike with a comfortable riding position and 11-speed gearing, a good first road bike for fitness riding.", price: 78000, tag: "New",
-      colors: ["#1d3557", "#a8dadc"], rating: 4.6, stock: 12,
-      specs: { Frame: "Aluminium", Groupset: "11-speed mechanical", Weight: "9.2 kg", Wheels: "Alloy" },
-      quiz: { terrain: "road", goal: "fitness", level: "beginner" } },
-    { id: "b3", type: "bike", category: "gravel", name: "Gravel Explorer 7",
-      description: "An aluminium gravel bike with a 1x12 drivetrain and 45mm tires for mixed roads, dirt and weekend adventures.", price: 112000,
-      colors: ["#6b705c", "#ddbea9"], rating: 4.7, stock: 7,
-      specs: { Frame: "Aluminium", Groupset: "1x12 mechanical", Weight: "9.8 kg", Tires: "45mm" },
-      quiz: { terrain: "mixed", goal: "adventure", level: "intermediate" } },
-    { id: "b4", type: "bike", category: "gravel", name: "Gravel CF Race 9",
-      description: "A carbon gravel race bike with a 2x12 electronic groupset and fast 40mm tires, made for speed on mixed surfaces.", price: 168000, tag: "Hot",
-      colors: ["#264653", "#e9c46a"], rating: 4.9, stock: 3,
-      specs: { Frame: "Carbon", Groupset: "2x12 electronic", Weight: "8.4 kg", Tires: "40mm" },
-      quiz: { terrain: "mixed", goal: "speed", level: "advanced" } },
-    { id: "b5", type: "bike", category: "mountain", name: "Trail 140 AL",
-      description: "An aluminium trail mountain bike with 140mm of travel, a 1x12 drivetrain and 29-inch wheels for technical trails.", price: 125000,
-      colors: ["#2a9d8f", "#111111"], rating: 4.6, stock: 9,
-      specs: { Frame: "Aluminium", Travel: "140mm", Groupset: "1x12", Wheels: "29\"" },
-      quiz: { terrain: "trail", goal: "adventure", level: "intermediate" } },
-    { id: "b6", type: "bike", category: "mountain", name: "Hardtail XC 5",
-      description: "An aluminium cross-country hardtail with a 100mm fork, 1x10 gearing and 29-inch wheels, a solid start on the trails.", price: 54000, compareAt: 62000, tag: "Sale",
-      colors: ["#f4a261", "#222222"], rating: 4.4, stock: 15,
-      specs: { Frame: "Aluminium", Travel: "100mm fork", Groupset: "1x10", Wheels: "29\"" },
-      quiz: { terrain: "trail", goal: "fitness", level: "beginner" } },
-    { id: "b7", type: "bike", category: "city", name: "Urban Glide 3",
-      description: "An 8-speed aluminium city bike with fenders and a rack, made for daily commutes and errands around town.", price: 32000,
-      colors: ["#457b9d", "#f1faee", "#111111"], rating: 4.5, stock: 20,
-      specs: { Frame: "Aluminium", Gears: "8-speed", Extras: "Fenders, rack", Weight: "11.5 kg" },
-      quiz: { terrain: "city", goal: "commute", level: "beginner" } },
-    { id: "b8", type: "bike", category: "electric", name: "E-Commuter 500",
-      description: "An electric commuter bike with a 250W mid-drive motor and a 500Wh battery with up to 100 km of range.", price: 98000, tag: "New",
-      colors: ["#222222", "#adb5bd"], rating: 4.7, stock: 6,
-      specs: { Motor: "250W mid-drive", Battery: "500Wh", Range: "Up to 100 km", Frame: "Aluminium" },
-      quiz: { terrain: "city", goal: "commute", level: "intermediate" } },
-    { id: "b9", type: "bike", category: "electric", name: "E-Trail 160",
-      description: "A long-travel electric mountain bike with an 85Nm motor, a 750Wh battery and 160mm of travel for big trail days.", price: 245000,
-      colors: ["#0b3d2e", "#111111"], rating: 4.9, stock: 2,
-      specs: { Motor: "85Nm mid-drive", Battery: "750Wh", Travel: "160mm", Wheels: "29/27.5\"" },
-      quiz: { terrain: "trail", goal: "adventure", level: "advanced" } },
+    { id: "b10", type: "bike", category: "road", name: "Sprint AL 3", price: 42000,
+      description: "An aluminium road bike with easy gearing and confident disc brakes, a friendly first step into road cycling.",
+      bestFor: "Your first road bike", colors: ["#3c78c6", "#1c2126"], stock: 14,
+      fit: { terrain: "road", goal: "fitness", level: "beginner" },
+      specs: { Frame: "Aluminium", Fork: "Alloy", Groupset: "Mechanical 8-speed", Gearing: "2×8 speed", Brakes: "Mechanical disc", Wheels: "700c alloy", Tires: "28 mm", Weight: "10.4 kg" } },
+    { id: "b11", type: "bike", category: "road", name: "Tempo AL 4", price: 49500, tag: "New",
+      description: "A lighter aluminium road bike with a carbon fork and 20 gears, quick enough for weekend group rides without the race-bike price.",
+      bestFor: "Fast weekend rides on a budget", colors: ["#e63946", "#1c2126", "#eeebe3"], stock: 9,
+      fit: { terrain: "road", goal: "speed", level: "beginner" },
+      specs: { Frame: "Aluminium", Fork: "Carbon", Groupset: "Mechanical 10-speed", Gearing: "2×10 speed", Brakes: "Mechanical disc", Wheels: "700c alloy", Tires: "28 mm", Weight: "9.8 kg" } },
+    { id: "b2", type: "bike", category: "road", name: "Endurance AL 6", price: 78000,
+      description: "An aluminium endurance road bike with a relaxed riding position, hydraulic brakes and room for wider tires on long days.",
+      bestFor: "Long rides in comfort", colors: ["#1d3557", "#a8dadc"], stock: 12,
+      fit: { terrain: "road", goal: "fitness", level: "intermediate" },
+      specs: { Frame: "Aluminium", Fork: "Carbon", Groupset: "Mechanical 11-speed", Gearing: "2×11 speed", Brakes: "Hydraulic disc", Wheels: "700c alloy", Tires: "32 mm", Weight: "9.2 kg" } },
+    { id: "b1", type: "bike", category: "road", name: "Aero Road CF 8", price: 189000, compareAt: 215000,
+      description: "A carbon aero road bike with a 12-speed electronic groupset and 50mm carbon wheels, built for fast group rides and racing.",
+      bestFor: "Racing and fast group rides", colors: ["#111111", "#e63946", "#f1faee"], stock: 4,
+      fit: { terrain: "road", goal: "speed", level: "advanced" },
+      specs: { Frame: "Carbon", Fork: "Carbon", Groupset: "Electronic 12-speed", Gearing: "2×12 speed", Brakes: "Hydraulic disc", Wheels: "700c carbon, 50 mm deep", Tires: "28 mm", Weight: "7.6 kg" } },
+
+    { id: "b12", type: "bike", category: "gravel", name: "Gravel Rover 3", price: 47000,
+      description: "An aluminium gravel bike with 40mm tires and mounts for racks and bags, ready for rough roads and light trails.",
+      bestFor: "Mixed roads and light trails", colors: ["#6b705c", "#1c2126"], stock: 11,
+      fit: { terrain: "mixed", goal: "adventure", level: "beginner" },
+      specs: { Frame: "Aluminium", Fork: "Alloy", Groupset: "Mechanical 9-speed", Gearing: "2×9 speed", Brakes: "Mechanical disc", Wheels: "700c alloy", Tires: "40 mm", Weight: "11.0 kg" } },
+    { id: "b3", type: "bike", category: "gravel", name: "Gravel Explorer 7", price: 112000,
+      description: "An aluminium gravel bike with a 1x12 drivetrain and 45mm tires for mixed roads, dirt and weekend adventures.",
+      bestFor: "Weekend adventures off the tarmac", colors: ["#6b705c", "#ddbea9"], stock: 7,
+      fit: { terrain: "mixed", goal: "adventure", level: "intermediate" },
+      specs: { Frame: "Aluminium", Fork: "Carbon", Groupset: "Mechanical 12-speed", Gearing: "1×12 speed", Brakes: "Hydraulic disc", Wheels: "700c alloy, tubeless ready", Tires: "45 mm", Weight: "9.8 kg" } },
+    { id: "b4", type: "bike", category: "gravel", name: "Gravel CF Race 9", price: 168000, tag: "Hot",
+      description: "A carbon gravel race bike with a 2x12 electronic groupset and fast 40mm tires, made for speed on mixed surfaces.",
+      bestFor: "Gravel racing", colors: ["#264653", "#e9c46a"], stock: 3,
+      fit: { terrain: "mixed", goal: "speed", level: "advanced" },
+      specs: { Frame: "Carbon", Fork: "Carbon", Groupset: "Electronic 12-speed", Gearing: "2×12 speed", Brakes: "Hydraulic disc", Wheels: "700c carbon", Tires: "40 mm", Weight: "8.4 kg" } },
+
+    { id: "b13", type: "bike", category: "mountain", name: "Hardtail XC 3", price: 36000,
+      description: "An aluminium hardtail with a 100mm suspension fork and wide-range gearing, a simple and sturdy way to start trail riding.",
+      bestFor: "Starting out on trails", colors: ["#2a9d8f", "#1c2126"], stock: 16,
+      fit: { terrain: "trail", goal: "fitness", level: "beginner" },
+      specs: { Frame: "Aluminium", Suspension: "100 mm fork (coil)", Groupset: "Mechanical 9-speed", Gearing: "2×9 speed", Brakes: "Mechanical disc", Wheels: "29 in alloy", Tires: "2.25 in", Weight: "14.1 kg" } },
+    { id: "b6", type: "bike", category: "mountain", name: "Hardtail XC 5", price: 54000, compareAt: 62000,
+      description: "An aluminium cross-country hardtail with a 100mm air fork, 1x11 gearing and 29-inch wheels, light enough to climb and quick on flowing trails.",
+      bestFor: "Cross-country trails and climbs", colors: ["#f4a261", "#222222"], stock: 15,
+      fit: { terrain: "trail", goal: "fitness", level: "beginner" },
+      specs: { Frame: "Aluminium", Suspension: "100 mm fork (air)", Groupset: "Mechanical 11-speed", Gearing: "1×11 speed", Brakes: "Hydraulic disc", Wheels: "29 in alloy, tubeless ready", Tires: "2.25 in", Weight: "12.9 kg" } },
+    { id: "b5", type: "bike", category: "mountain", name: "Trail 140 AL", price: 125000,
+      description: "An aluminium trail mountain bike with 140mm of travel front and rear, a 1x12 drivetrain and 29-inch wheels for technical trails.",
+      bestFor: "Technical trails and descents", colors: ["#2a9d8f", "#111111"], stock: 9,
+      fit: { terrain: "trail", goal: "adventure", level: "intermediate" },
+      specs: { Frame: "Aluminium", Suspension: "140 mm front and rear", Groupset: "Mechanical 12-speed", Gearing: "1×12 speed", Brakes: "Hydraulic disc, 4-piston", Wheels: "29 in alloy, tubeless ready", Tires: "2.4 in", Weight: "14.6 kg" } },
+
+    { id: "b7", type: "bike", category: "city", name: "Urban Glide 3", price: 32000,
+      description: "An 8-speed aluminium city bike with fenders and a rack, made for daily commutes and errands around town.",
+      bestFor: "Short commutes and errands", colors: ["#457b9d", "#f1faee", "#111111"], stock: 20,
+      fit: { terrain: "city", goal: "commute", level: "beginner" },
+      specs: { Frame: "Aluminium", Fork: "Steel", Groupset: "Mechanical 8-speed", Gearing: "1×8 speed", Brakes: "Mechanical disc", Wheels: "700c alloy", Tires: "38 mm", Weight: "11.5 kg", Extras: "Fenders, rear rack" } },
+    { id: "b14", type: "bike", category: "city", name: "Urban Glide 5", price: 45000,
+      description: "A lighter 10-speed city bike with hydraulic brakes, fenders, a rack and built-in lights for commuting in any weather.",
+      bestFor: "Daily commuting in any weather", colors: ["#1c2126", "#92694b"], stock: 10,
+      fit: { terrain: "city", goal: "commute", level: "beginner" },
+      specs: { Frame: "Aluminium", Fork: "Alloy", Groupset: "Mechanical 10-speed", Gearing: "1×10 speed", Brakes: "Hydraulic disc", Wheels: "700c alloy", Tires: "40 mm", Weight: "11.0 kg", Extras: "Fenders, rear rack, lights" } },
+
+    { id: "b15", type: "bike", category: "electric", name: "E-City 300", price: 68000,
+      description: "An electric city bike with a rear hub motor and up to 70 km of range, an easy way to arrive without the sweat.",
+      bestFor: "Easy city rides with a boost", colors: ["#457b9d", "#1c2126"], stock: 8,
+      fit: { terrain: "city", goal: "commute", level: "beginner" },
+      specs: { Motor: "250 W rear hub", Battery: "360 Wh", Range: "Up to 70 km", Frame: "Aluminium", Gearing: "1×8 speed", Brakes: "Mechanical disc", Wheels: "700c alloy", Tires: "42 mm", Weight: "20.8 kg", Extras: "Fenders, lights" } },
+    { id: "b8", type: "bike", category: "electric", name: "E-Commuter 500", price: 98000, tag: "New",
+      description: "An electric commuter bike with a 250W mid-drive motor and a 500Wh battery with up to 100 km of range.",
+      bestFor: "Long commutes with a boost", colors: ["#222222", "#adb5bd"], stock: 6,
+      fit: { terrain: "city", goal: "commute", level: "intermediate" },
+      specs: { Motor: "250 W mid-drive", Battery: "500 Wh", Range: "Up to 100 km", Frame: "Aluminium", Gearing: "1×9 speed", Brakes: "Hydraulic disc", Wheels: "700c alloy", Tires: "45 mm", Weight: "22.5 kg", Extras: "Fenders, rear rack, lights" } },
+    { id: "b9", type: "bike", category: "electric", name: "E-Trail 160", price: 245000,
+      description: "A long-travel electric mountain bike with an 85Nm motor, a 750Wh battery and 160mm of travel for big trail days.",
+      bestFor: "Big trail days with a boost", colors: ["#0b3d2e", "#111111"], stock: 2,
+      fit: { terrain: "trail", goal: "adventure", level: "advanced" },
+      specs: { Motor: "85 Nm mid-drive", Battery: "750 Wh", Range: "Up to 90 km", Frame: "Aluminium", Suspension: "160 mm front and rear", Gearing: "1×12 speed", Brakes: "Hydraulic disc, 4-piston", Wheels: "29 in front, 27.5 in rear", Tires: "2.5 in", Weight: "24.3 kg" } },
 
     // ---- Parts ----
     { id: "p1", type: "part", category: "components", name: "12-Speed Groupset",
-      description: "A complete 12-speed groupset with shifters, derailleurs, crankset, cassette and chain for a full drivetrain upgrade.", price: 42000, rating: 4.7, stock: 8, icon: "gear", tag: "Hot" },
+      description: "A complete 12-speed groupset with shifters, derailleurs, crankset, cassette and chain for a full drivetrain upgrade.", price: 42000, stock: 8, icon: "gear", tag: "Hot", specs: { Speeds: "12", Includes: "Shifters, derailleurs, crankset, cassette, chain" } },
     { id: "p2", type: "part", category: "components", name: "Hydraulic Disc Brake Set",
-      description: "A front and rear hydraulic disc brake set for strong, consistent stopping in all weather.", price: 9800, rating: 4.6, stock: 14, icon: "brake" },
+      description: "A front and rear hydraulic disc brake set for strong, consistent stopping in all weather.", price: 9800, stock: 14, icon: "brake", specs: { Type: "Hydraulic disc", Includes: "Front and rear calipers, levers, hoses" } },
     { id: "p3", type: "part", category: "components", name: "Carbon Handlebar",
-      description: "A lightweight carbon handlebar that reduces weight and road vibration.", price: 7500, compareAt: 8900, tag: "Sale", rating: 4.5, stock: 10, icon: "bar" },
+      description: "A lightweight carbon handlebar that reduces weight and road vibration.", price: 7500, compareAt: 8900, stock: 10, icon: "bar", specs: { Material: "Carbon", Width: "40 / 42 / 44 cm" } },
     { id: "p4", type: "part", category: "wheels", name: "Carbon Wheelset 45mm",
-      description: "A 45mm-deep carbon wheelset that is fast on flat roads and light enough for climbing.", price: 58000, rating: 4.8, stock: 5, icon: "wheel" },
+      description: "A 45mm-deep carbon wheelset that is fast on flat roads and light enough for climbing.", price: 58000, stock: 5, icon: "wheel", specs: { Depth: "45 mm", Material: "Carbon", Tubeless: "Yes" } },
     { id: "p5", type: "part", category: "wheels", name: "Tubeless Road Tire 28c",
-      description: "A 28mm tubeless road tire with low rolling resistance and good grip.", price: 2600, rating: 4.6, stock: 40, icon: "tire" },
+      description: "A 28mm tubeless road tire with low rolling resistance and good grip.", price: 2600, stock: 40, icon: "tire", specs: { Width: "28 mm", Tubeless: "Yes" } },
     { id: "p6", type: "part", category: "wheels", name: "Gravel Tire 45mm",
-      description: "A 45mm tubeless-ready gravel tire with a fast center tread and grippy side knobs.", price: 2900, rating: 4.5, stock: 30, icon: "tire", tag: "New" },
+      description: "A 45mm tubeless-ready gravel tire with a fast center tread and grippy side knobs.", price: 2900, stock: 30, icon: "tire", tag: "New", specs: { Width: "45 mm", Tubeless: "Ready" } },
     { id: "p7", type: "part", category: "gear", name: "Aero Helmet",
-      description: "An aerodynamic road helmet with vents to keep you cool on hot rides.", price: 8500, rating: 4.7, stock: 18, icon: "helmet" },
+      description: "An aerodynamic road helmet with vents to keep you cool on hot rides.", price: 8500, stock: 18, icon: "helmet", specs: { Sizes: "S / M / L", Use: "Road" } },
     { id: "p8", type: "part", category: "gear", name: "Bike Computer GPS",
-      description: "A GPS bike computer that tracks speed, distance and routes, with turn-by-turn navigation.", price: 14500, rating: 4.8, stock: 9, icon: "computer" },
+      description: "A GPS bike computer that tracks speed, distance and routes, with turn-by-turn navigation.", price: 14500, stock: 9, icon: "computer", specs: { Features: "GPS, navigation, ride tracking", Battery: "Up to 20 hours" } },
     { id: "p9", type: "part", category: "gear", name: "Front & Rear Light Set",
-      description: "A rechargeable front and rear light set so you can see and be seen on early and late rides.", price: 2200, compareAt: 2800, tag: "Sale", rating: 4.4, stock: 50, icon: "light" },
+      description: "A rechargeable front and rear light set so you can see and be seen on early and late rides.", price: 2200, compareAt: 2800, stock: 50, icon: "light", specs: { Charging: "USB-C", Includes: "Front and rear light" } },
     { id: "p10", type: "part", category: "gear", name: "Bottle Cage + Bottle",
-      description: "A lightweight bottle cage with a matching water bottle.", price: 950, rating: 4.3, stock: 60, icon: "bottle" }
+      description: "A lightweight bottle cage with a matching water bottle.", price: 950, stock: 60, icon: "bottle", specs: { Volume: "600 ml", Includes: "Cage and bottle" } }
   ],
+
+  // Frame sizes and the rider heights (cm) they suit
+  sizes: [
+    { s: "XS", min: 150, max: 160 }, { s: "S", min: 160, max: 168 }, { s: "M", min: 168, max: 176 },
+    { s: "L", min: 176, max: 184 }, { s: "XL", min: 184, max: 200 }
+  ],
+
+  // Bike Finder: budget slider range and quick-pick amounts.
+  // "stretch" = how far over budget a bike can be and still be suggested (0.15 = 15%).
+  finder: { budgetMin: 20000, budgetMax: 260000, step: 1000, defaultBudget: 50000, quick: [30000, 50000, 80000, 120000, 200000], stretch: 0.15 },
+
+  // Price ranges offered as one-tap filters on listing pages: [from, to] (null = no limit)
+  priceBands: {
+    bike: [[0, 50000], [50000, 100000], [100000, 150000], [150000, null]],
+    part: [[0, 3000], [3000, 10000], [10000, null]]
+  },
+  shippingFee: 350,
 
   // Gamification config
   levels: [

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cycle Central | Online Bike Shop in the Philippines</title>
-  <meta name="description" content="Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Compare bikes, take the Bike Finder quiz and earn rewards." />
+  <meta name="description" content="Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Set your budget, compare specs side by side and find the right bike." />
   <meta name="theme-color" content="#3c78c6" />
   <link rel="preload" href="assets/fonts/inter-latin-800-italic.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="assets/fonts/open-sauce-sans-latin-400-normal.woff" as="font" type="font/woff" crossorigin />
@@ -15,6 +15,7 @@
   <link rel="manifest" href="site.webmanifest" />
 </head>
 <body>
+  <a class="skip" href="#app">Skip to content</a>
   <!-- Scroll "ride" progress -->
   <div class="ride-track" aria-hidden="true"><div class="ride-fill"></div><span class="ride-bike">🚴</span></div>
 
@@ -26,12 +27,13 @@
 
   <header class="site-header">
     <div class="header-inner">
-      <button class="icon-btn menu-toggle" aria-label="Open menu" data-action="toggle-menu">☰</button>
+      <button class="icon-btn menu-toggle" aria-label="Open menu" data-action="toggle-menu"><span data-icon="menu" data-size="22"></span></button>
       <a href="./" data-path="" class="logo" aria-label="Cycle Central home">
-        <img class="logo-full" src="assets/logo.svg" alt="Cycle Central" width="156" height="50" />
-        <img class="logo-icon" src="assets/mark.svg" alt="" width="50" height="40" />
+        <img class="logo-full" src="assets/logo.svg" alt="Cycle Central" width="131" height="42" />
+        <img class="logo-icon" src="assets/mark.svg" alt="" width="42" height="34" />
       </a>
       <nav class="main-nav" id="mainNav" aria-label="Main">
+        <button class="icon-btn nav-close" data-action="close-all" aria-label="Close menu"><span data-icon="close"></span></button>
         <div class="nav-item has-mega">
           <a href="bikes/" data-path="bikes/">Bikes</a>
           <div class="mega" id="megaBikes"></div>
@@ -41,17 +43,18 @@
           <div class="mega" id="megaParts"></div>
         </div>
         <div class="nav-item"><a href="sale/" data-path="sale/">Sale</a></div>
-        <div class="nav-item"><button class="link-btn" data-action="open-quiz">Bike Finder</button></div>
+        <div class="nav-item"><a href="bike-finder/" data-path="bike-finder/">Bike Finder</a></div>
         <div class="nav-item"><a href="rewards/" data-path="rewards/">Rewards</a></div>
       </nav>
       <div class="header-actions">
-        <button class="xp-pill" data-action="go-rewards" title="Your rider level">
+        <button class="search-btn" data-action="open-search" aria-label="Search bikes and parts"><span data-icon="search"></span><span>Search bikes and parts</span><kbd>/</kbd></button>
+        <button class="xp-pill" data-action="go-rewards" title="Your Rider Club level">
           <span class="xp-level" id="xpLevel">Rookie</span>
           <span class="xp-bar"><span class="xp-bar-fill" id="xpBarFill"></span></span>
           <span class="xp-num" id="xpNum">0 XP</span>
         </button>
-        <button class="icon-btn" aria-label="Compare" data-action="open-compare">⇄<span class="badge" id="compareCount" hidden>0</span></button>
-        <button class="icon-btn" aria-label="Cart" data-action="open-cart">🛒<span class="badge" id="cartCount" hidden>0</span></button>
+        <a class="icon-btn" href="favourites/" data-path="favourites/" rel="nofollow" aria-label="Favourites"><span data-icon="heart" data-size="22"></span><span class="badge" id="favCount" hidden>0</span></a>
+        <button class="icon-btn" aria-label="Cart" data-action="open-cart"><span data-icon="cart" data-size="22"></span><span class="badge" id="cartCount" hidden>0</span></button>
       </div>
     </div>
   </header>
@@ -61,17 +64,16 @@
   <footer class="site-footer">
     <div class="footer-inner">
       <div>
-        <a href="./" data-path="" class="logo logo-footer" aria-label="Cycle Central home"><img src="assets/logo-light.svg" alt="Cycle Central" width="200" height="64" /></a>
-        <p class="muted">Fresh rides, fast service, built around the riding community. Bikes, parts and gear for every kind of rider in the Philippines.</p>
+        <a href="./" data-path="" class="logo logo-footer" aria-label="Cycle Central home"><img src="assets/logo-light.svg" alt="Cycle Central" width="188" height="60" /></a>
+        <p>Fresh rides, fast service, built around the riding community. Bikes, parts and gear for every kind of rider in the Philippines.</p>
       </div>
       <div>
         <h4>Shop</h4>
-        <a href="bikes/" data-path="bikes/">Bikes</a><a href="parts/" data-path="parts/">Parts & Gear</a><a href="sale/" data-path="sale/">Sale</a>
+        <a href="bikes/" data-path="bikes/">Bikes</a><a href="parts/" data-path="parts/">Parts & Gear</a><a href="sale/" data-path="sale/">Sale</a><a href="bike-finder/" data-path="bike-finder/">Bike Finder</a>
       </div>
       <div>
         <h4>Rider Club</h4>
         <a href="rewards/" data-path="rewards/">Rewards & Badges</a>
-        <button class="link-btn" data-action="open-quiz">Bike Finder</button>
         <button class="link-btn" data-action="open-spin">Daily Spin</button>
       </div>
       <div>
@@ -79,27 +81,42 @@
         <span class="footer-soon">Shipping info (coming soon)</span><span class="footer-soon">Returns (coming soon)</span><span class="footer-soon">Contact us (coming soon)</span>
       </div>
     </div>
-    <p class="footer-legal muted">© <span id="year"></span> Cycle Central. Product images and inventory are placeholders.</p>
+    <p class="footer-legal">© <span id="year"></span> Cycle Central. Product images and inventory are placeholders.</p>
   </footer>
 
-  <!-- Drawers & modals -->
+  <!-- Panels -->
   <div class="overlay" id="overlay" data-action="close-all"></div>
 
-  <aside class="drawer" id="cartDrawer" aria-label="Cart">
-    <div class="drawer-head"><h3>Your Cart</h3><button class="icon-btn" data-action="close-all" aria-label="Close">✕</button></div>
+  <aside class="drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Cart">
+    <div class="drawer-head"><h3>Your cart</h3><button class="icon-btn" data-action="close-all" aria-label="Close"><span data-icon="close"></span></button></div>
     <div class="ship-meter" id="shipMeter"></div>
     <div class="drawer-body" id="cartBody"></div>
     <div class="drawer-foot" id="cartFoot"></div>
   </aside>
 
-  <div class="modal" id="quizModal" role="dialog" aria-modal="true" aria-label="Bike Finder"><div class="modal-card" id="quizCard"></div></div>
+  <div class="search-panel" id="searchPanel" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="search-inner">
+      <div class="search-field">
+        <span data-icon="search" data-size="24"></span>
+        <input type="search" id="searchInput" placeholder="Search bikes, parts and gear" autocomplete="off" aria-label="Search bikes, parts and gear" />
+        <button class="icon-btn" data-action="close-all" aria-label="Close search"><span data-icon="close"></span></button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="quickModal" role="dialog" aria-modal="true" aria-label="Quick view"><div class="modal-card wide" id="quickCard"></div></div>
   <div class="modal" id="spinModal" role="dialog" aria-modal="true" aria-label="Daily spin"><div class="modal-card" id="spinCard"></div></div>
-  <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-label="Compare"><div class="modal-card wide" id="compareCard"></div></div>
+  <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-label="Compare bikes"><div class="modal-card wide" id="compareCard"></div></div>
+
+  <div class="compare-tray" id="compareTray" hidden></div>
+  <div class="buy-bar" id="buyBar"></div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <canvas id="confetti" aria-hidden="true"></canvas>
 
   <script src="js/data.js" defer></script>
+  <script src="js/art.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>

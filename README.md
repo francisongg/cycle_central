@@ -13,15 +13,21 @@ npm run preview       # serves dist/ locally and prints the address
 For quick edits you can also serve the project folder (`python3 -m http.server 8000`) and open the home page. Clicking around works, but reloading a deeper page needs the built version.
 
 ## Features
-- **Shop**: real page addresses for home (`/`), listings (`/bikes/`, `/bikes/road/`, `/parts/`, `/sale/`), products (`/products/aero-road-cf-8/`) and rewards (`/rewards/`). Filter by category, price, search and sort. Old `/#/...` links redirect to the new addresses.
-- **Product page**: colour swatches, frame sizes, a size suggester that works from your height, specs, and "Complete your build" upsells.
+The shop is built around how people buy a bike: budget first, then fit, then specs.
+
+- **Budget-first home page**: a budget slider (or type an exact amount) and a "where will you ride" picker sit in the hero. Three picks update as you move it: **Best match**, **Best value** and **Worth the stretch** (up to 15% over budget), each with the reasons it fits.
+- **Bike Finder** (`/bike-finder/`): the same controls plus goal, experience and e-bike preference. It scores every bike out of 100 and lists them best first. The answers are kept in the address, so a set of picks can be shared as a link.
+- **Specs at a glance**: every bike card shows frame, gearing and weight. **Quick view** opens the specs, sizes and Add to cart without leaving the list.
+- **Compare**: add up to 3 bikes from any card, or compare the Finder's picks in one tap. The table marks the lowest price and lightest bike and can show differences only. Each bike's page also has a ready-made "How it compares" table against its two closest alternatives.
+- **Listing pages**: real addresses for home (`/`), listings (`/bikes/`, `/bikes/road/`, `/parts/`, `/sale/`), products (`/products/aero-road-cf-8/`) and rewards (`/rewards/`). Filter by budget, type, frame and rider level; filters stay in the address (`/bikes/?max=50000&type=road`) and survive the back button. On phones the filters open as a bottom sheet.
+- **Search** (press `/`): instant results as you type. A number is read as a budget, so `road 50k` shows road bikes around ₱50,000.
+- **Product page**: key specs up top, frame sizes with the rider heights they fit (type your height and the size is picked for you), full spec table, and a buy button that stays on screen while you scroll.
 - **Cart drawer**: a free-shipping progress meter, quick-add upsells, discount codes, and member-level discounts.
-- **Compare**: up to 3 bikes side by side, with the best price and rating highlighted.
+- Old `/#/...` links redirect to the new addresses.
 
 ### Gamification
 - **XP and 5 rider levels** (Rookie → Champion). Each level unlocks a bigger member discount (0–8%) that's applied in the cart automatically.
-- **11 badges / missions**: viewing products, exploring every category, saving favourites, comparing bikes, building a full bike, unlocking free shipping, checking out, and more.
-- **Bike Finder quiz**: 4 questions that score every bike and show the best match as a percentage.
+- **11 badges / missions**: viewing products, exploring every category, using the Bike Finder, saving favourites, comparing bikes, building a full bike, unlocking free shipping, checking out, and more.
 - **Daily Spin wheel**: one spin a day for discount codes, free shipping or bonus XP.
 - **Scroll "ride" bar**: a progress line with a rider that crosses the screen as you scroll. Toasts, confetti and level-up celebrations add to the effect.
 - Progress is saved in the browser's `localStorage`.
@@ -49,7 +55,10 @@ The build stops with an error if any page is missing a title, description, canon
 
 ## Customising
 - **Brand colours and fonts**: they live in the tokens at the top of `css/styles.css`.
-- **Inventory**: replace the placeholder items in `js/data.js`. Give a product an `image` URL to use a real photo in place of the generated illustration.
+- **Inventory**: replace the placeholder items in `js/data.js`; the comment at the top of the file lists every field. Give a product an `image` URL to use a real photo in place of the drawn illustration (`js/art.js`).
+- **Bike specs**: use the standard spec names (Frame, Gearing, Brakes, Weight and so on) so cards, filters and compare tables line up. `bestFor` and `fit` (terrain, goal, level) drive the Bike Finder.
+- **Star ratings** only show for products that have a `reviews` count, so they always come from real reviews.
+- **Budget ranges, sizes and shipping fee**: `finder`, `priceBands`, `sizes` and `shippingFee` in `js/data.js`.
 - **Rewards tuning**: change levels, spin prizes and the free-shipping threshold in `js/data.js`. Change badge XP and level discounts in `js/app.js` (`BADGES`, `LEVEL_PERKS`).
 
 Checkout is a demo for now. No payment provider is connected yet.
