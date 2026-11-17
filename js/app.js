@@ -35,7 +35,7 @@
   const bySlug = (s) => D.products.find((p) => p.slug === s);
 
   const PATHS = {
-    home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/", finder: "bike-finder/",
+    home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/", finder: "bike-finder/", order: "how-to-order/",
     cat: (c) => `${c.type === "bike" ? "bikes" : "parts"}/${c.id}/`,
     product: (p) => `products/${p.slug}/`
   };
@@ -127,6 +127,8 @@
       logo: { "@type": "ImageObject", url: absAsset("assets/logo-512.png"), width: 512, height: 512 },
       description: D.site.description
     };
+    const tel = (D.contact || {}).phone || (D.contact || {}).viber;
+    if (tel) org.contactPoint = { "@type": "ContactPoint", telephone: tel.replace(/[^\d+]/g, ""), contactType: "sales", areaServed: "PH" };
     const graph = [org, {
       "@type": "WebSite", "@id": SITE + BASE + "#website", name: D.site.name, url: absUrl(),
       inLanguage: D.site.language, publisher: { "@id": org["@id"] }
@@ -173,7 +175,7 @@
   const KEY = "cc_state_v1";
   const defaults = {
     xp: 0, cart: [], compare: [], favs: [], badges: [], viewed: [], catsSeen: [],
-    lastSpin: null, codes: [], appliedCode: null, orders: 0,
+    lastSpin: null, codes: [], appliedCode: null, orders: 0, requests: [], customer: { name: "", mobile: "", area: "" },
     finder: { budget: D.finder.defaultBudget, terrain: "", goal: "", level: "", assist: "any" }
   };
   const fresh = () => JSON.parse(JSON.stringify(defaults));
@@ -184,6 +186,7 @@
       const saved = JSON.parse(localStorage.getItem(KEY)) || {};
       const s = Object.assign(base, saved);
       s.finder = Object.assign(fresh().finder, saved.finder || {});
+      s.customer = Object.assign(fresh().customer, saved.customer || {});
       // Forget products that are no longer in the inventory
       const known = (id) => !!byId(id);
       s.cart = s.cart.filter((l) => known(l.id));
@@ -210,7 +213,7 @@
     { id: "first-gear",  icon: "⚙️", name: "First Gear",     desc: "Add something to your cart",     xp: 20 },
     { id: "full-build",  icon: "🔧", name: "Full Build",     desc: "Cart has a bike and 2+ parts",   xp: 80 },
     { id: "free-ship",   icon: "📦", name: "Free Rider",     desc: "Unlock free shipping",           xp: 40 },
-    { id: "podium",      icon: "🥇", name: "Podium Finish",  desc: "Complete a checkout",            xp: 150 }
+    { id: "podium",      icon: "🥇", name: "Podium Finish",  desc: "Send an order request",          xp: 150 }
   ];
 
   function levelIndex(xp = S.xp) {
@@ -282,6 +285,10 @@
   const SPEC_ORDER = ["Motor", "Battery", "Range", "Frame", "Fork", "Suspension", "Groupset", "Gearing", "Brakes", "Wheels", "Tires", "Weight", "Extras"];
   const SPEC_ICON = { Motor: "bolt", Battery: "battery", Range: "route", Frame: "frame", Fork: "frame", Suspension: "spring", Groupset: "gears", Gearing: "gears", Brakes: "brake", Wheels: "wheel", Tires: "wheel", Weight: "weight", Extras: "box" };
 
+  // Colours are { name, hex } (a plain "#hex" string also works)
+  const colorsOf = (p) => (p.colors || []).map((c, i) => (typeof c === "string" ? { hex: c, name: `Colour ${i + 1}` } : c));
+  const colorHex = (p, i = 0) => { const cs = colorsOf(p); return (cs[i] || cs[0] || { hex: "#3c78c6" }).hex; };
+  const colorName = (p, i = 0) => { const cs = colorsOf(p); return (cs[i] || cs[0] || {}).name || ""; };
   const onSale = (p) => !!p.compareAt && p.compareAt > p.price;
   const soldOut = (p) => p.stock === 0;
   const weightOf = (p) => { const m = /([\d.]+)\s*kg/i.exec((p.specs || {}).Weight || ""); return m ? +m[1] : null; };
@@ -303,7 +310,7 @@
     if (p.image) return `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" decoding="async">`;
     if (!isBike(p)) return partSVG(p.icon, "#3c78c6", label ? p.name : "");
     const s = p.specs || {};
-    return bikeSVG((p.colors || ["#3c78c6"])[colorIdx] || p.colors[0], p.category, {
+    return bikeSVG(colorHex(p, colorIdx), p.category, {
       label: label ? p.name : "",
       deepRims: /deep/i.test(s.Wheels || ""),
       fullSus: /rear/i.test(s.Suspension || ""),
@@ -391,7 +398,7 @@
         ${bike ? chipsHTML(p) : ""}
         <div class="price-row">${priceHTML(p)}${stars(p)}</div>
         ${(p.colors && p.colors.length > 1) || (p.stock > 0 && p.stock <= 5) ? `<div class="card-row">
-          ${p.colors && p.colors.length > 1 ? `<div class="swatches">${p.colors.map((c, i) => `<button class="swatch ${i === 0 ? "active" : ""}" style="background:${c}" data-action="swatch" data-id="${p.id}" data-i="${i}" aria-label="Show colour ${i + 1}"></button>`).join("")}</div>` : "<span></span>"}
+          ${p.colors && p.colors.length > 1 ? `<div class="swatches">${colorsOf(p).map((c, i) => `<button class="swatch ${i === 0 ? "active" : ""}" style="background:${c.hex}" data-action="swatch" data-id="${p.id}" data-i="${i}" aria-label="Show ${esc(c.name)}" title="${esc(c.name)}"></button>`).join("")}</div>` : "<span></span>"}
           ${p.stock > 0 && p.stock <= 5 ? `<span class="stock-low">Only ${p.stock} left</span>` : ""}
         </div>` : ""}
         <div class="card-actions">
@@ -677,7 +684,7 @@
 
   // Colour and size pickers, shared by the product page and quick view
   function optionsHTML(p, sel) {
-    return `${p.colors && p.colors.length > 1 ? `<div class="pdp-block"><h4>Colour</h4><div class="swatches lg">${p.colors.map((col, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${col}" data-action="opt-color" data-i="${i}" aria-label="Colour ${i + 1}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>` : ""}
+    return `${p.colors && p.colors.length > 1 ? `<div class="pdp-block"><h4>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h4><div class="swatches lg">${colorsOf(p).map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>` : ""}
       ${isBike(p) ? `<div class="pdp-block"><h4>Frame size<b class="size-picked">${sel.size || ""}</b></h4>
         <div class="size-grid">${D.sizes.map((z) => `<button class="size-btn ${sel.size === z.s ? "on" : ""}" data-action="opt-size" data-s="${z.s}" aria-pressed="${sel.size === z.s}" aria-label="Size ${z.s}, for riders ${z.min} to ${z.max} cm">${z.s}<small>${z.min}–${z.max} cm</small></button>`).join("")}</div>
         <div class="size-helper"><label for="${sel.key}Height">${icon("ruler", 16)} Not sure? Enter your height</label><input type="number" id="${sel.key}Height" inputmode="numeric" placeholder="cm" min="120" max="220" data-height><span class="size-msg" aria-live="polite"></span></div>
@@ -744,11 +751,11 @@
               <button class="btn btn-brand" data-action="add-sel" ${soldOut(p) ? "disabled" : ""}>${soldOut(p) ? "Sold out" : "Add to cart"}</button>
               ${favBtn(p, "btn btn-ghost")}
             </div>
-            ${bike ? `<div>${compareBtn(p, "text-link")}</div>` : ""}
+            <div class="pdp-links">${bike ? compareBtn(p, "text-link") : ""}${askBtn(p)}</div>
             <ul class="assure">
               <li>${icon("truck")}${p.price >= D.freeShippingThreshold ? "Free shipping on this item" : `Free shipping on orders over ${peso(D.freeShippingThreshold)}`}</li>
               <li>${icon("returns")}30-day returns</li>
-              <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} price at checkout: ${peso(p.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
+              <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(p.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
             </ul>
           </div>
         </div>
@@ -818,7 +825,7 @@
           ${glanceHTML(p)}
           ${optionsHTML(p, QV)}
           <div class="buy-row"><button class="btn btn-brand" data-action="add-sel" ${soldOut(p) ? "disabled" : ""}>${soldOut(p) ? "Sold out" : "Add to cart"}</button>${favBtn(p, "btn btn-ghost")}</div>
-          <div style="display:flex;gap:8px 20px;flex-wrap:wrap"><a class="text-link" href="${url(PATHS.product(p))}" data-action="close-all">Full details ${icon("arrow", 16)}</a>${isBike(p) ? compareBtn(p, "text-link") : ""}</div>
+          <div class="pdp-links"><a class="text-link" href="${url(PATHS.product(p))}" data-action="close-all">Full details ${icon("arrow", 16)}</a>${isBike(p) ? compareBtn(p, "text-link") : ""}${askBtn(p)}</div>
         </div>
       </div>
       ${specs.length ? `<div class="quick-specs"><span class="field-label">All specs</span><dl>${specs.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>` : ""}`;
@@ -844,7 +851,7 @@
               <div><b>${S.xp}</b>Total XP</div>
               <div><b>${S.badges.length}/${BADGES.length}</b>Badges</div>
               <div><b>${LEVEL_PERKS[i]}%</b>Member discount</div>
-              <div><b>${S.orders}</b>Orders</div>
+              <div><b>${S.orders}</b>Order requests</div>
             </div>
           </div>
         </section>
@@ -858,7 +865,7 @@
             <tr><th>Level</th><th>XP needed</th><th>Member discount</th></tr>
             ${D.levels.map((l, k) => `<tr class="${k === i ? "current" : ""}"><td>${LEVEL_ICONS[k]} ${l.name}${k === i ? " (you)" : ""}</td><td>${l.min}</td><td>${LEVEL_PERKS[k]}%</td></tr>`).join("")}
           </table>
-          <p class="muted" style="font-size:13px;margin-top:12px">Earn XP by exploring the shop, completing missions, spinning the daily wheel, and with every purchase (1 XP per ₱1,000 spent).</p>
+          <p class="muted" style="font-size:13px;margin-top:12px">Earn XP by exploring the shop, completing missions, spinning the daily wheel, and with every order request (1 XP per ₱1,000).</p>
           ${S.codes.length ? `<div class="section-head" style="margin-top:32px"><h2>Your codes</h2></div><div class="chip-list">${S.codes.map((c) => `<span class="code-pill">${c}</span>`).join("")}</div>` : ""}
           <p style="margin-top:28px"><button class="btn btn-ghost btn-sm" data-action="reset">Reset my progress</button></p>
         </section>
@@ -948,25 +955,193 @@
       ${t.lvlPct ? `<div class="sum-row discount"><span>${LEVEL_ICONS[levelIndex()]} ${D.levels[levelIndex()].name} discount (${t.lvlPct}%)</span><span>−${peso(t.sub * t.lvlPct / 100)}</span></div>` : ""}
       ${t.codePct ? `<div class="sum-row discount"><span>Code ${S.appliedCode} (${t.codePct}%)</span><span>−${peso(t.sub * t.codePct / 100)}</span></div>` : ""}
       <div class="sum-row"><span>Shipping</span><span>${t.ship ? peso(t.ship) : "FREE"}</span></div>
-      <div class="sum-row total"><span>Total</span><span>${peso(t.total)}</span></div>
-      <div class="xp-hint">You'll earn ${Math.max(1, Math.floor(t.total / 1000))} XP with this order</div>
-      <button class="btn btn-brand btn-block" data-action="checkout">Checkout</button>`;
+      <div class="sum-row total"><span>Estimated total</span><span>${peso(t.total)}</span></div>
+      <button class="btn btn-brand btn-block" data-action="order-open">${icon("arrow", 18)}Send order request</button>
+      <p class="order-note">No payment on the website. A sales rep confirms stock, size, final price and delivery with you. <a href="${url(PATHS.order)}" data-action="close-all">How ordering works</a></p>`;
   }
 
-  function checkout() {
+  /* =======================================================
+     ORDERING BY CHAT (until online payment is set up)
+     ======================================================= */
+  const C = D.contact || {};
+  const telDigits = (n) => { const d = String(n || "").replace(/[^\d+]/g, ""); return d.startsWith("+") ? d : "+" + d.replace(/^0/, "63"); };
+  const viberLink = (text) => (C.viber ? `viber://chat?number=${encodeURIComponent(telDigits(C.viber))}${text ? `&draft=${encodeURIComponent(text)}` : ""}` : "");
+  const chatChannel = () => (C.viber ? "viber" : C.messenger ? "messenger" : null);
+  let order = null; // the request being prepared or just sent: { ref, text, via }
+
+  function newRef() {
+    const d = new Date(), chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const rand = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    return `CC-${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-${rand}`;
+  }
+
+  // The message the customer sends us: items, options, prices, discounts and their details
+  function orderText(ref, who) {
     const t = cartTotals();
-    const xp = Math.max(1, Math.floor(t.total / 1000));
-    S.cart = []; S.appliedCode = null; S.orders += 1; save();
-    renderCartCount(); closeAll();
-    app.innerHTML = `<div class="wrap empty" style="padding-top:90px;padding-bottom:90px">
-      <div class="big">🏁</div><h1>Order placed!</h1>
-      <p>Thanks for riding with Cycle Central. See you on the road. Total paid: <b>${peso(t.total)}</b></p>
-      <p class="muted">(This is a demo checkout. Payment integration comes next.)</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px"><a class="btn btn-brand" href="${url(PATHS.rewards)}">See your rewards</a><a class="btn btn-ghost" href="${url()}">Keep shopping</a></div></div>`;
-    window.scrollTo(0, 0);
-    confetti();
-    addXP(xp, "Order XP");
+    const items = S.cart.map((l) => {
+      const p = byId(l.id);
+      const opts = [l.size && `size ${l.size}`, p.colors && p.colors.length > 1 && colorName(p, l.color)].filter(Boolean).join(", ");
+      return `• ${l.qty} × ${p.name}${opts ? ` (${opts})` : ""} – ${peso(p.price * l.qty)}`;
+    });
+    const money = [`Subtotal: ${peso(t.sub)}`];
+    if (t.lvlPct) money.push(`Rider Club ${D.levels[levelIndex()].name} discount: ${t.lvlPct}%`);
+    if (S.appliedCode) money.push(`Discount code: ${S.appliedCode}`);
+    money.push(`Estimated total: ${peso(t.total)}${t.ship ? ` (incl. ${peso(t.ship)} delivery)` : ""}`);
+    const details = [`Order ref: ${ref}`, `Name: ${who.name}`];
+    if (who.mobile) details.push(`Mobile: ${who.mobile}`);
+    if (who.area) details.push(`Deliver to: ${who.area}`);
+    if (who.notes) details.push(`Notes: ${who.notes}`);
+    return [`Hi ${D.site.name}! I'd like to order:`, items.join("\n"), money.join("\n"), details.join("\n")].join("\n\n");
+  }
+
+  function contactListHTML() {
+    const rows = [];
+    if (C.viber) rows.push(`<li>${icon("chat", 20)}<span>Viber <b class="selectable">${esc(C.viber)}</b></span><a class="btn btn-sm btn-brand" href="${viberLink("")}">Chat on Viber</a></li>`);
+    if (C.messenger) rows.push(`<li>${icon("chat", 20)}<span>Facebook Messenger</span><a class="btn btn-sm btn-ghost" href="${esc(C.messenger)}" target="_blank" rel="noopener">Open Messenger</a></li>`);
+    if (C.phone) rows.push(`<li>${icon("phone", 20)}<span>Call or text <b class="selectable">${esc(C.phone)}</b></span><a class="btn btn-sm btn-ghost" href="tel:${telDigits(C.phone)}">Call</a></li>`);
+    if (C.email) rows.push(`<li>${icon("mail", 20)}<span>Email <b class="selectable">${esc(C.email)}</b></span></li>`);
+    return rows.length ? `<ul class="contact-list">${rows.join("")}</ul>` : "";
+  }
+  const communityHTML = () => (C.viberCommunity ? `<a class="community" href="${esc(C.viberCommunity)}" target="_blank" rel="noopener">${icon("users", 22)}<span><b>Join our Viber community</b><small>New arrivals, group rides and members-only deals</small></span>${icon("arrow", 18)}</a>` : "");
+
+  function openOrder() {
+    if (!S.cart.length) return;
+    order = null;
+    renderOrderForm();
+    openPanel("#orderModal");
+  }
+
+  function renderOrderForm() {
+    const t = cartTotals(), who = S.customer, ch = chatChannel();
+    const lines = S.cart.map((l) => { const p = byId(l.id); return `<li><span>${l.qty} × ${esc(p.name)}${l.size ? ` · ${esc(l.size)}` : ""}${p.colors && p.colors.length > 1 ? ` · ${esc(colorName(p, l.color))}` : ""}</span><b>${peso(p.price * l.qty)}</b></li>`; }).join("");
+    $("#orderCard").innerHTML = `<button class="icon-btn modal-close" data-action="close-all" aria-label="Close">${icon("close")}</button>
+      <h2>Send order request</h2>
+      <p class="muted" style="margin-top:8px">No payment is taken on the website. A sales rep confirms stock, size, final price and delivery with you, then sends payment details.</p>
+      <ul class="order-items">${lines}<li class="total"><span>Estimated total</span><b>${peso(t.total)}</b></li></ul>
+      <form id="orderForm" class="order-form" novalidate>
+        <label for="oName">Your name</label><input id="oName" autocomplete="name" required value="${esc(who.name)}">
+        <label for="oMobile">Mobile number <span class="muted">(optional)</span></label><input id="oMobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxxx" value="${esc(who.mobile)}">
+        <label for="oArea">Deliver to <span class="muted">(city or area)</span></label><input id="oArea" autocomplete="address-level2" placeholder="e.g. Quezon City" value="${esc(who.area)}">
+        <label for="oNotes">Notes <span class="muted">(optional)</span></label><textarea id="oNotes" rows="2" placeholder="Questions about sizing, preferred delivery date..."></textarea>
+        <p class="form-error" id="orderError" role="alert"></p>
+        ${ch ? "" : `<p class="notice">${icon("chat", 18)}<span>Our Viber ordering line opens soon. You can copy your order details now so they're ready to send.</span></p>`}
+        <div class="order-actions">
+          ${C.viber ? `<button class="btn btn-brand" data-action="order-send" data-via="viber">${icon("send", 18)}Send on Viber</button>` : ""}
+          ${C.messenger ? `<button class="btn ${C.viber ? "btn-ghost" : "btn-brand"}" data-action="order-send" data-via="messenger">Send on Messenger</button>` : ""}
+          <button class="btn ${ch ? "btn-ghost" : "btn-brand"}" data-action="order-send" data-via="copy">${icon("copy", 18)}Copy order details</button>
+        </div>
+      </form>`;
+  }
+
+  async function copyText(text, area) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch (e) {
+      if (area) { area.focus(); area.select(); try { return document.execCommand("copy"); } catch (x) { return false; } }
+      return false;
+    }
+  }
+
+  function sendOrder(via) {
+    const who = { name: $("#oName").value.trim(), mobile: $("#oMobile").value.trim(), area: $("#oArea").value.trim(), notes: $("#oNotes").value.trim() };
+    if (!who.name) { $("#orderError").textContent = "Enter your name so our sales team knows who the order is for."; $("#oName").focus(); return; }
+    S.customer = { name: who.name, mobile: who.mobile, area: who.area };
+    const ref = newRef(), text = orderText(ref, who), t = cartTotals();
+    order = { ref, text, via };
+    const copied = copyText(text); // start the copy inside the click, as browsers require
+    S.orders += 1;
+    S.requests = [{ ref, at: new Date().toISOString(), total: t.total, items: S.cart.length }, ...S.requests].slice(0, 10);
+    save();
+    if (via === "viber") window.location.href = viberLink(text);
+    if (via === "messenger") window.open(C.messenger, "_blank", "noopener");
+    copied.then((ok) => renderOrderSent(ok));
+    addXP(Math.max(1, Math.floor(t.total / 1000)), "Order request XP");
     setTimeout(() => award("podium"), 700);
+  }
+
+  function renderOrderSent(copied) {
+    const { ref, text, via } = order;
+    const lead = via === "viber" ? "We opened Viber with your order filled in. Press send in Viber to finish."
+      : via === "messenger" ? `Your order details are ${copied ? "copied" : "below"}. Paste them into the Messenger chat and send.`
+      : chatChannel() ? `Your order details are ${copied ? "copied" : "below"}. Send them to us on one of the channels below.`
+      : `Your order details are ${copied ? "copied" : "below"}. Our Viber ordering line opens soon. Keep this reference so you can send it then.`;
+    $("#orderCard").innerHTML = `<button class="icon-btn modal-close" data-action="close-all" aria-label="Close">${icon("close")}</button>
+      <div class="order-done">
+        <span class="done-icon">${icon("check", 30)}</span>
+        <h2>Order request ready</h2>
+        <p class="ref">Reference <b class="selectable">${ref}</b></p>
+        <p>${lead}</p>
+      </div>
+      <label class="field-label" for="orderText">Your order message</label>
+      <textarea id="orderText" class="order-text" readonly rows="8">${esc(text)}</textarea>
+      <div class="order-actions">
+        <button class="btn btn-ghost" data-action="order-copy">${icon(copied ? "check" : "copy", 16)}${copied ? "Copied" : "Copy order details"}</button>
+        ${via !== "viber" && C.viber ? `<a class="btn btn-brand" href="${viberLink(text)}">Open Viber</a>` : ""}
+      </div>
+      ${contactListHTML()}
+      <h4 class="field-label" style="margin-top:20px">What happens next</h4>
+      <ol class="next-steps">
+        <li>Our sales team confirms stock, size and the final price.</li>
+        <li>You agree on delivery or pickup and any delivery fee.</li>
+        <li>We send payment details and arrange your delivery.</li>
+      </ol>
+      ${communityHTML()}
+      <div class="order-actions" style="margin-top:18px">
+        <button class="btn btn-ghost" data-action="order-clear">Clear my cart</button>
+        <button class="btn" data-action="close-all">Keep browsing</button>
+      </div>`;
+  }
+
+  // "Ask about this bike": opens a chat with the product already named
+  function askAbout(id) {
+    const p = byId(id);
+    if (!p) return;
+    const sel = $("#quickModal").classList.contains("open") ? QV : PDP;
+    const size = sel.id === id && sel.size ? ` in size ${sel.size}` : "";
+    const text = `Hi ${D.site.name}! I'm interested in the ${p.name}${size} (${peso(p.price)}). Is it available?\n${absUrl(PATHS.product(p))}`;
+    if (C.viber) window.location.href = viberLink(text);
+    else if (C.messenger) { copyText(text); window.open(C.messenger, "_blank", "noopener"); toast("Message copied. Paste it in Messenger."); }
+  }
+  const askBtn = (p, cls = "text-link") => (chatChannel() ? `<button class="${cls}" data-action="ask" data-id="${p.id}">${icon("chat", 16)}Ask about this ${isBike(p) ? "bike" : "item"}</button>` : "");
+
+  function viewHowToOrder() {
+    const pg = D.pages.order;
+    const steps = [
+      { icon: "target", title: "Choose your bike", text: "Use the Bike Finder or compare bikes side by side. Add your bike to the cart with its size and colour, plus any parts or gear." },
+      { icon: "cart", title: "Send an order request", text: "In your cart, tap Send order request. We prepare a message with your items, sizes, prices and a reference number for you to send us." },
+      { icon: "check", title: "We confirm the details", text: "A sales rep confirms stock, sizing and the final price, and agrees delivery or pickup with you." },
+      { icon: "truck", title: "Pay and get riding", text: "Once your order is confirmed, we send payment details in the chat and arrange your delivery." }
+    ];
+    const contacts = contactListHTML();
+    const st = C.store;
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="page-head">
+          ${crumbsHTML([{ name: "How to order" }])}
+          <h1>How to order</h1>
+          <p class="page-intro">${esc(pg.intro)}</p>
+        </div>
+        <ol class="order-steps">${steps.map((x) => `<li><span class="step-icon">${icon(x.icon, 24)}</span><h2>${esc(x.title)}</h2><p>${esc(x.text)}</p></li>`).join("")}</ol>
+        <div class="order-help">
+          <section>
+            <h2>Talk to us</h2>
+            ${contacts || `<p class="notice">${icon("chat", 18)}<span>Our Viber ordering line opens soon. You can already build your cart and copy your order details from it.</span></p>`}
+            ${C.hours ? `<p class="muted" style="margin-top:10px">${esc(C.hours)}</p>` : ""}
+            ${communityHTML()}
+            ${st && st.address ? `<div class="store-card"><h3>Visit us</h3><p><b>${esc(st.name || D.site.name)}</b><br>${esc(st.address)}</p>${st.hours ? `<p class="muted">${esc(st.hours)}</p>` : ""}${st.mapUrl ? `<a class="text-link" href="${esc(st.mapUrl)}" target="_blank" rel="noopener">Open in Maps ${icon("arrow", 16)}</a>` : ""}</div>` : ""}
+          </section>
+          <section>
+            <h2>Good to know</h2>
+            <dl class="faq">
+              <div><dt>Can I pay on the website?</dt><dd>Not yet. Payment details are sent in the chat once your order is confirmed.</dd></div>
+              <div><dt>Is my bike reserved when I send a request?</dt><dd>Our sales team checks stock and confirms it when they reply.</dd></div>
+              <div><dt>Not sure about the size?</dt><dd>Enter your height on any bike's page to see the size we suggest, or ask us in the chat.</dd></div>
+              <div><dt>Do Rider Club discounts count?</dt><dd>Your member discount and any Daily Spin code are included in your order message.</dd></div>
+            </dl>
+          </section>
+        </div>
+        <p style="margin:8px 0 64px"><a class="btn btn-brand" href="${url(PATHS.finder)}">Find your bike</a></p>
+      </div>`;
+    setMeta({ title: pg.seoTitle, description: pg.metaDescription, crumbs: [{ name: "How to order", path: PATHS.order }] });
   }
 
   /* =======================================================
@@ -1444,6 +1619,7 @@
         sel.color = +el.dataset.i;
         (sel === QV ? $("#quickArt") : $("#pdpArt")).innerHTML = art(byId(sel.id), sel.color);
         $$('[data-action="opt-color"]', root).forEach((s, k) => { s.classList.toggle("active", k === sel.color); s.setAttribute("aria-pressed", k === sel.color); });
+        const cp = $(".color-picked", root); if (cp) cp.textContent = colorName(byId(sel.id), sel.color);
         break;
       }
       case "opt-size": pickSize(el, el.dataset.s); break;
@@ -1487,7 +1663,11 @@
         renderCart();
         break;
       }
-      case "checkout": checkout(); break;
+      case "order-open": openOrder(); break;
+      case "order-send": e.preventDefault(); sendOrder(el.dataset.via); break;
+      case "order-copy": copyText(order ? order.text : "", $("#orderText")).then((ok) => { el.innerHTML = icon("check", 16) + (ok ? "Copied" : "Select the text above to copy"); }); break;
+      case "order-clear": S.cart = []; S.appliedCode = null; save(); renderCartCount(); closeAll(); toast("Cart cleared"); break;
+      case "ask": askAbout(id); break;
       case "do-spin": doSpin(); break;
 
       case "finder-set": S.finder[el.dataset.k] = el.dataset.v; refreshFinder(); break;
@@ -1552,6 +1732,7 @@
     else if (e.key === "Enter" && e.target.id === "searchInput") { const first = $("#searchResults .search-hit"); if (first) first.click(); }
     else if (e.key === "Enter" && e.target.id === "codeIn") { const b = $('[data-action="apply-code"]'); if (b) b.click(); }
     else if (e.key === "Enter" && e.target.id === "budgetInput") e.target.blur();
+    else if (e.key === "Enter" && e.target.closest && e.target.closest("#orderForm") && e.target.tagName === "INPUT") { e.preventDefault(); const b = $('#orderForm [data-action="order-send"]'); if (b) b.click(); }
   });
 
   // Scroll "ride" progress bar
@@ -1582,6 +1763,7 @@
     else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
     else if (a === "bike-finder" && segs.length === 1) viewFinder();
     else if (a === "rewards" && segs.length === 1) viewRewards();
+    else if (a === "how-to-order" && segs.length === 1) viewHowToOrder();
     else if (a === "products" && segs.length === 2 && bySlug(b)) viewProduct(bySlug(b).id);
     else viewNotFound();
     $$(".main-nav a[data-path]").forEach((l) => { if (a && l.dataset.path === a + "/") l.setAttribute("aria-current", "page"); else l.removeAttribute("aria-current"); });
@@ -1650,6 +1832,7 @@
         ...D.categories.map((c) => ({ path: PATHS.cat(c), priority: "0.8" })),
         { path: PATHS.sale, priority: "0.7" },
         ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7" })),
+        { path: PATHS.order, priority: "0.6" },
         { path: PATHS.rewards, priority: "0.4" },
         { path: PATHS.favourites, noindex: true }
       ],

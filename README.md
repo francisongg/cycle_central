@@ -23,6 +23,7 @@ The shop is built around how people buy a bike: budget first, then fit, then spe
 - **Search** (press `/`): instant results as you type. A number is read as a budget, so `road 50k` shows road bikes around ₱50,000.
 - **Product page**: key specs up top, frame sizes with the rider heights they fit (type your height and the size is picked for you), full spec table, and a buy button that stays on screen while you scroll.
 - **Cart drawer**: a free-shipping progress meter, quick-add upsells, discount codes, and member-level discounts.
+- **Ordering by chat** (no online payment yet): the cart's **Send order request** collects the customer's name, mobile, delivery area and notes, then builds an order message with every item, size, colour, price, discount and a reference number (`CC-MMDD-XXXX`). It opens Viber with the message filled in (or Messenger), and always copies it so it can be pasted anywhere. Bike pages get an **Ask about this bike** button. The **How to order** page (`/how-to-order/`) explains the four steps and lists the contact channels.
 - Old `/#/...` links redirect to the new addresses.
 
 ### Gamification
@@ -58,6 +59,7 @@ The build stops with an error if any page is missing a title, description, canon
 - **Inventory**: replace the placeholder items in `js/data.js`; the comment at the top of the file lists every field. Give a product an `image` URL to use a real photo in place of the drawn illustration (`js/art.js`).
 - **Bike specs**: use the standard spec names (Frame, Gearing, Brakes, Weight and so on) so cards, filters and compare tables line up. `bestFor` and `fit` (terrain, goal, level) drive the Bike Finder.
 - **Star ratings** only show for products that have a `reviews` count, so they always come from real reviews.
+- **Contact channels**: fill in `contact` at the top of `js/data.js` (Viber number, Viber community link, Messenger, phone, email, hours, store). Anything left empty is hidden. Until a Viber number or Messenger link is set, the site tells shoppers the ordering line opens soon and offers Copy only.
 - **Budget ranges, sizes and shipping fee**: `finder`, `priceBands`, `sizes` and `shippingFee` in `js/data.js`.
 - **Rewards tuning**: change levels, spin prizes and the free-shipping threshold in `js/data.js`. Change badge XP and level discounts in `js/app.js` (`BADGES`, `LEVEL_PERKS`).
 
