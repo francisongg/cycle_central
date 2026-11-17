@@ -7,6 +7,7 @@
 // Env:   SITE_URL   public address, default from js/data.js (site.url)
 //        BASE_PATH  folder the site lives in, default "/" (use "/cycle_central/" without a custom domain)
 //        CHROMIUM_PATH  optional path to a Chromium binary
+//        CATALOG_FEED_KEY  Cycle Beast feed key; when set, the bikes come from Cycle Beast (see scripts/catalog.mjs)
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
@@ -14,6 +15,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { startServer } from "./serve.mjs";
+import { loadCatalog } from "./catalog.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
@@ -42,6 +44,22 @@ async function main() {
   await fs.rm(DIST, { recursive: true, force: true });
   await fs.mkdir(DIST, { recursive: true });
   for (const dir of ["css", "js", "assets"]) await fs.cp(path.join(ROOT, dir), path.join(DIST, dir), { recursive: true });
+
+  // Bikes from Cycle Beast. If the key is set but the feed can't be read, stop here so the
+  // site that is already live stays up instead of being replaced.
+  const catalog = await loadCatalog({ categories: data.categories });
+  if (catalog) {
+    await write("js/catalog.js", `/* Bikes from Cycle Beast, ${new Date().toISOString()} */\nwindow.CC_CATALOG = ${JSON.stringify({ source: "Cycle Beast", fetchedAt: new Date().toISOString(), products: catalog.products })};\n`);
+    console.log(`Catalog: ${catalog.products.length} models, ${catalog.products.reduce((n, p) => n + p.variants.length, 0)} SKUs from Cycle Beast`);
+    for (const r of catalog.summary) console.log(`  ${r.name.padEnd(34)} ${r.category.padEnd(9)} ${String(r.variants).padStart(2)} SKU  ${String(r.inStock).padStart(2)} in stock  ${r.photos} photos  (type from ${r.how})`);
+    for (const w of catalog.warnings) console.log(`  ! ${w}`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      const rows = catalog.summary.map((r) => `| ${r.name} | ${r.category} (${r.how}) | ₱${r.price.toLocaleString("en-PH")} | ${r.variants} | ${r.inStock} | ${r.photos} |`).join("\n");
+      await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `## Bikes imported from Cycle Beast\n\n| Model | Type | From | SKUs | In stock | Photos |\n|---|---|---|---|---|---|\n${rows}\n\n${catalog.warnings.length ? "### Check these\n\n" + catalog.warnings.map((w) => `- ${w}`).join("\n") + "\n" : ""}`);
+    }
+  } else {
+    console.log("Catalog: CATALOG_FEED_KEY is not set, so the placeholder bikes in js/data.js are used.");
+  }
 
   // Page template: index.html with every relative URL pointed at BASE
   let template = await fs.readFile(path.join(ROOT, "index.html"), "utf8");
@@ -152,7 +170,8 @@ async function main() {
   server.close();
 
   // Sitemap and robots.txt
-  const indexable = report.filter((r) => !r.noindex);
+  // SKU pages point search engines at their model page, so only model pages go in the sitemap
+  const indexable = report.filter((r) => !r.noindex && !r.variant);
   await write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${indexable.map((r) => `  <url><loc>${SITE_URL}${BASE}${r.path}</loc><lastmod>${today}</lastmod><priority>${r.priority}</priority></url>`).join("\n")}
@@ -173,14 +192,14 @@ ${indexable.map((r) => `  <url><loc>${SITE_URL}${BASE}${r.path}</loc><lastmod>${
     if (h1s !== 1) problems.push(`${r.path || "/"}: has ${h1s} <h1> headings`);
     const ld = h.match(/<script type="application\/ld\+json" id="ld-json">([\s\S]*?)<\/script>/);
     try { JSON.parse(ld[1]); } catch { problems.push(`${r.path || "/"}: structured data is missing or invalid`); }
-    if (title && !r.noindex) {
+    if (title && !r.noindex && !r.variant) {
       if (titles.has(title)) problems.push(`${r.path || "/"}: same title as ${titles.get(title) || "/"}`);
       titles.set(title, r.path);
     }
   }
   if (problems.length) throw new Error("SEO checks failed:\n  " + problems.join("\n  "));
 
-  console.log(`Done: ${report.length} pages, ${indexable.length} in sitemap, ${products.length} product images.`);
+  console.log(`Done: ${report.length} pages (${report.filter((r) => r.variant).length} SKU pages), ${indexable.length} in sitemap, ${products.filter((p) => !p.hasImage).length} product images.`);
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

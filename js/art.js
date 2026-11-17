@@ -58,7 +58,9 @@
     road:     { R: 66, tire: 5,  rear: [102, 172], front: [302, 172], bb: [182, 186], seat: [153, 88], headTop: [262, 78], headBot: [270, 104], post: 30, ring: 16, bar: "drop" },
     gravel:   { R: 66, tire: 8,  rear: [100, 172], front: [304, 172], bb: [181, 185], seat: [153, 92], headTop: [262, 80], headBot: [270, 106], post: 27, ring: 14, bar: "drop" },
     mountain: { R: 67, tire: 11, rear: [94, 171],  front: [316, 171], bb: [178, 179], seat: [157, 98], headTop: [259, 64], headBot: [267, 82],  post: 30, ring: 12, bar: "flat", fork: "sus", knobs: true },
-    city:     { R: 65, tire: 7,  rear: [100, 173], front: [300, 173], bb: [180, 185], seat: [151, 96], headTop: [254, 66], headBot: [264, 98],  post: 26, ring: 15, bar: "swept", fenders: true }
+    city:     { R: 65, tire: 7,  rear: [100, 173], front: [300, 173], bb: [180, 185], seat: [151, 96], headTop: [254, 66], headBot: [264, 98],  post: 26, ring: 15, bar: "swept", fenders: true },
+    // Small wheels, one low main tube and a tall handlepost
+    folding:  { R: 47, tire: 7,  rear: [112, 192], front: [292, 192], bb: [190, 196], seat: [170, 122], headTop: [266, 68], headBot: [274, 150], post: 58, ring: 16, bar: "flat", mono: true }
   };
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   const unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; };
@@ -99,13 +101,15 @@
     const pivot = lerp(bb, seat, 0.5);
     const stayTop = o.fullSus ? pivot : lerp(seat, bb, 0.14);
     const downW = electric && !o.hubMotor ? 15 : 9;
-    const tubes = [
-      [rear, bb, 5], [rear, stayTop, 4.5], [bb, seat, 8],
-      [seatJoin, headJoinTop, 7], [bb, headJoinBot, downW], [headTop, headBot, 10]
-    ];
+    const tubes = g.mono
+      ? [[rear, bb, 5], [rear, stayTop, 4.5], [bb, seat, 8], [lerp(bb, seat, 0.3), lerp(headTop, headBot, 0.92), 13], [headTop, headBot, 7]]
+      : [
+          [rear, bb, 5], [rear, stayTop, 4.5], [bb, seat, 8],
+          [seatJoin, headJoinTop, 7], [bb, headJoinBot, downW], [headTop, headBot, 10]
+        ];
     const outline = o.light ? "" : tubes.map(([a, b, w]) => line(a, b, w + 1.6, "#1c2126", 'opacity=".3"')).join("");
     const frame = tubes.map(([a, b, w]) => line(a, b, w, color)).join("");
-    const shine = [tubes[3], tubes[4]].map(([a, b]) => line([a[0] + 3, a[1] - 1.8], [b[0] - 3, b[1] - 1.8], 1.6, "#ffffff", 'opacity=".28"')).join("");
+    const shine = (g.mono ? [tubes[3]] : [tubes[3], tubes[4]]).map(([a, b]) => line([a[0] + 3, a[1] - 1.8], [b[0] - 3, b[1] - 1.8], 1.6, "#ffffff", 'opacity=".28"')).join("");
 
     // Fork
     let fork;

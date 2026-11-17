@@ -1,10 +1,15 @@
 name: Deploy to GitHub Pages
 
-# Builds the site (one HTML file per page, sitemap, share images) and publishes it
-# whenever the default branch changes.
+# Builds the site (one HTML file per page, sitemap, share images) and publishes it.
+# Bikes, prices and stock come from the Cycle Beast feed, so the site also rebuilds
+# every hour, and Cycle Beast can ask for an immediate rebuild (see README).
 on:
   push:
   workflow_dispatch:
+  schedule:
+    - cron: "23 * * * *"
+  repository_dispatch:
+    types: [cycle-beast-updated]
 
 permissions:
   contents: read
@@ -17,7 +22,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref_name == github.event.repository.default_branch
+    # Scheduled and dispatched runs always use the default branch; pushes only deploy from it
+    if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -39,6 +45,11 @@ jobs:
           # otherwise https://<user>.github.io with base path /cycle_central
           SITE_URL: ${{ steps.pages.outputs.origin }}
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          # Cycle Beast feed key (Settings → Secrets and variables → Actions → CATALOG_FEED_KEY).
+          # Without it the placeholder bikes are used. If it's set and the feed can't be read,
+          # the build stops and the site that's already live stays up.
+          CATALOG_FEED_KEY: ${{ secrets.CATALOG_FEED_KEY }}
+          CATALOG_FEED_URL: ${{ vars.CATALOG_FEED_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

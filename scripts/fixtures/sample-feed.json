@@ -1,0 +1,51 @@
+{
+  "_note": "SAMPLE DATA for testing the importer only (CATALOG_FEED_FILE=scripts/fixtures/sample-feed.json npm run build). Specs, descriptions and stock are made up. Formats are deliberately mixed.",
+  "bikes": [
+    { "sku": "GNT-REVOLT2-GRY-XS", "brand": "Giant", "model": "Revolt 2", "year": 2026, "color": "Gray", "size": "XS", "price": 52550, "srp": 52550, "discountPercent": 0,
+      "specs": { "Frame": "ALUXX-Grade aluminium", "Fork": "Composite", "Drivetrain": "Shimano Sora 2x9", "Brakes": "Mechanical disc", "Tires": "Maxxis Receptor 40mm", "Weight": 10.2 },
+      "description": "An aluminium gravel bike with wide tires and relaxed handling for rough roads and long days out.",
+      "highlights": ["Room for 45mm tires", "Mounts for racks and bags", "Shimano Sora 2x9 gearing"], "photos": [], "availability": "in_stock" },
+    { "sku": "GNT-REVOLT2-GRY-S", "brand": "Giant", "model": "Revolt 2", "year": 2026, "color": "Gray", "size": "S", "price": 52550, "srp": 52550, "discountPercent": 0,
+      "specs": { "Frame": "ALUXX-Grade aluminium" }, "description": "", "highlights": [], "photos": [], "availability": "in_stock" },
+    { "sku": "GNT-REVOLT2-GRY-M", "brand": "Giant", "model": "Revolt 2", "year": 2026, "color": "Gray", "size": "M", "price": 52550, "srp": 52550, "discountPercent": 0,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "out_of_stock" },
+
+    { "sku": "GNT-DEFYADV3-GRN-M", "brand": "Giant", "model": "Defy Advanced 3", "year": 2026, "color": "Green", "size": "M", "price": 88990, "srp": 95550, "discountPercent": 7,
+      "specs": [ { "label": "Frame", "value": "Advanced-grade composite" }, { "label": "Groupset", "value": "Shimano Tiagra 2x10" }, { "label": "Brakes", "value": "Hydraulic disc" }, { "label": "Weight", "value": "8.9 kg" } ],
+      "description": "A carbon endurance road bike built for comfort on long rides.\n\nSmooth-riding frame with a relaxed position and hydraulic disc brakes.",
+      "highlights": "Carbon frame\nHydraulic disc brakes\nRelaxed endurance fit", "photos": [], "availability": { "status": "in_stock", "quantity": 1 } },
+    { "sku": "GNT-DEFYADV3-GRN-L", "brand": "Giant", "model": "Defy Advanced 3", "year": 2026, "color": "Green", "size": "L", "price": 88990, "srp": 95550, "discountPercent": 7,
+      "specs": [], "description": "", "highlights": [], "photos": [], "availability": 0 },
+
+    { "sku": "GNT-TCRADVPRO0-S", "brand": "Giant", "model": "TCR Advanced Pro 0 AXS", "year": 2026, "color": "", "size": "S", "price": 199550, "srp": 199550,
+      "specs": { "Frame": "Advanced-grade composite", "Groupset": "SRAM Force AXS electronic 2x12", "Wheels": "Giant SLR 1 carbon", "Weight": "7.4 kg" },
+      "description": "A lightweight race bike for climbing and fast group rides.", "highlights": ["Electronic wireless shifting", "Carbon wheels"], "photos": [], "availability": "available_for_order" },
+
+    { "sku": "NEO-406CB-OLV-20", "brand": "Neo", "model": "Neo-406CB", "year": 2025, "color": "Olive Green", "size": "20", "price": 75550, "srp": 75550,
+      "specs": { "Frame": "Carbon", "Gears": "9-speed", "Brakes": "Hydraulic disc", "Weight": "9.8 kg" },
+      "description": "A carbon folding bike with 20-inch wheels that packs down small for the car or the train.", "highlights": ["Folds in seconds", "Carbon frame"], "photos": [], "availability": 1 },
+    { "sku": "NEO-406CB-DOBW-20", "brand": "Neo", "model": "Neo-406CB", "year": 2025, "color": "Dark Oath Black Waves", "size": "20", "price": 75550, "srp": 75550,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": 4 },
+    { "sku": "NEO-406CB-BORB-20", "brand": "Neo", "model": "Neo-406CB", "year": 2025, "color": "Burning Orange Radiant Black", "size": "20", "price": 75550, "srp": 75550,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "5 in stock" },
+
+    { "sku": "NEO-406ALFD-BLK-20", "brand": "Neo", "model": "Neo-406ALFD", "year": 2025, "color": "Black", "size": "20", "price": 35990, "srp": 35990,
+      "specs": { "Frame": "Aluminium", "Gears": "9-speed" }, "description": "An aluminium folding bike for city rides.", "highlights": [], "photos": [], "availability": "in_stock" },
+    { "sku": "NEO-406ALFD-SBT-20", "brand": "Neo", "model": "Neo-406ALFD", "year": 2025, "color": "Shiny Black Titanium", "size": "20", "price": 35990, "srp": 35990,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "in_stock" },
+    { "sku": "NEO-406ALFD-LIMS-20", "brand": "Neo", "model": "Neo-406ALFD", "year": 2025, "color": "Silver Mirror Black", "size": "20", "price": 43000, "srp": 43000,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "out of stock" },
+
+    { "sku": "NEO 14 AL WHT", "brand": "Neo", "model": "Neo-14-AL", "year": 2025, "color": "White", "size": "14", "price": 26550, "srp": 26550,
+      "specs": {}, "description": "A small-wheeled folding bike.", "highlights": [], "photos": [], "availability": "in_stock" },
+
+    { "sku": "JAVA-FUOCOTOP-WHT-450", "brand": "Java", "model": "Fuoco Top", "year": 2025, "color": "White", "size": "450", "price": 89990, "srp": 89990,
+      "specs": { "Frame": "Carbon", "Groupset": "Shimano 105 2x11", "Brakes": "Rim" }, "description": "", "highlights": [], "photos": [], "availability": "in_stock" },
+
+    { "sku": "VOOK-V8EPRO", "brand": "VOOK", "model": "V8E PRO", "year": 2026, "color": "Matte Black", "size": "M", "price": 105550, "srp": 105550,
+      "specs": { "Motor": "250 W rear hub", "Battery": "468 Wh", "Range": "Up to 80 km", "Frame": "Aluminium" }, "description": "", "highlights": ["Pedal assist with 5 levels"], "photos": [], "availability": "in_stock" },
+
+    { "sku": "GNT-REVOLT2-GRY-XS", "brand": "Giant", "model": "Revolt 2", "year": 2026, "color": "Gray", "size": "XS", "price": 52550, "srp": 52550, "availability": "in_stock" },
+    { "sku": "MYSTERY-1", "brand": "Acme", "model": "Something", "year": 2026, "color": "Teal", "size": "", "price": "₱18,500.00", "srp": "18500", "availability": "reserved" }
+  ]
+}

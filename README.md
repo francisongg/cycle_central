@@ -54,9 +54,35 @@ The build stops with an error if any page is missing a title, description, canon
 
 **Where to edit the words**: `js/data.js` holds the site name and description (`site`), the listing page titles, descriptions and intro text (`pages`), each category's `seoTitle` and `intro`, and each product's `description`. The live address comes from GitHub Pages during deployment (`SITE_URL`/`BASE_PATH`), falling back to `site.url`.
 
+## Bikes from Cycle Beast
+The bikes, prices and stock come from Cycle Beast's catalog feed:
+
+```
+GET https://cycle-beast.vercel.app/api/feed/cycle-central?key=<CATALOG_FEED_KEY>
+```
+
+**Setup (once):** in this repository go to **Settings → Secrets and variables → Actions → New repository secret**, name it `CATALOG_FEED_KEY` and paste the key. The next deploy uses it. Until it's set, the placeholder bikes in `js/data.js` are shown. To use a different feed address, add a repository *variable* `CATALOG_FEED_URL`.
+
+**When the site updates:** on every push, every hour (at :23), and on demand from the Actions tab (**Deploy to GitHub Pages → Run workflow**). Cycle Beast can also trigger a rebuild right away by calling GitHub's `repository_dispatch` with event type `cycle-beast-updated`; this needs a GitHub token with permission to start workflows on this repository.
+
+**How the feed becomes pages** (`scripts/catalog.mjs`, run by `npm run build`):
+- Rows are grouped by **brand + model** (plus year, when a model is sold in more than one year) into one page per model at `/products/<brand-model>/`, with its colours and sizes as options.
+- **Every SKU gets its own page** at `/products/<sku in lowercase>/`, so links shared on Facebook keep working. It opens the model with that colour and size picked. Search engines are pointed at the model page (canonical link), while the share preview keeps the SKU's own address. Choosing a colour and size on a model page also switches the address to that SKU.
+- `price` is the selling price; when it's lower than `srp`, the SRP is shown crossed out. If only `srp` and `discountPercent` are given, the price is worked out from them.
+- `availability`: in stock shows "In stock" (and "Only N left" when a quantity is given). **Anything not in stock is "Available to order", never sold out**, and can still be added to the cart. The order message tells the sales rep which SKUs are to order.
+- `photos` are used in this order: the colour's own photos, then the model's. They must be public `https://` addresses. A model with no photos shows a drawing.
+- `specs`, `description` (paragraphs separated by a blank line) and `highlights` (list, or one per line) show on the product page and in comparisons.
+- Bike type (road, gravel, mountain, city, folding, electric) comes from a `category` field if the feed has one; otherwise it's worked out from the model name, specs and description. The build log says how each bike was typed. **Adding `category` to the feed is the reliable fix** for any bike listed under "Other".
+- Only these fields are copied, so anything else in the feed never reaches the public site.
+- If the key is set but the feed can't be read (wrong key, Cycle Beast down, not JSON, no bikes), the build stops and the site that's already live stays up. The key is never printed.
+- Each run's summary on GitHub (Actions → the run) lists every imported model with its type, price, SKUs, stock and photo count, plus anything to check.
+- Parts and gear aren't in the feed yet, so when the feed is used, the Parts & Gear section is hidden.
+
+Test the import locally with the sample feed: `CATALOG_FEED_FILE=scripts/fixtures/sample-feed.json npm run build`.
+
 ## Customising
 - **Brand colours and fonts**: they live in the tokens at the top of `css/styles.css`.
-- **Inventory**: replace the placeholder items in `js/data.js`; the comment at the top of the file lists every field. Give a product an `image` URL to use a real photo in place of the drawn illustration (`js/art.js`).
+- **Inventory**: comes from Cycle Beast (see above). Without the feed key, the placeholder items in `js/data.js` are used; the comment at the top of that file lists every field. Give a product an `image` URL to use a real photo in place of the drawn illustration (`js/art.js`).
 - **Bike specs**: use the standard spec names (Frame, Gearing, Brakes, Weight and so on) so cards, filters and compare tables line up. `bestFor` and `fit` (terrain, goal, level) drive the Bike Finder.
 - **Star ratings** only show for products that have a `reviews` count, so they always come from real reviews.
 - **Contact channels**: fill in `contact` at the top of `js/data.js` (Viber number, Viber community link, Messenger, phone, email, hours, store). Anything left empty is hidden. Until a Viber number or Messenger link is set, the site tells shoppers the ordering line opens soon and offers Copy only.

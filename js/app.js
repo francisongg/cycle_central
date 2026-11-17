@@ -2,6 +2,13 @@
   "use strict";
 
   const D = window.CC_DATA;
+  // Bikes from Cycle Beast (js/catalog.js, written by the build). Until it's set up, the
+  // placeholder products in js/data.js are shown.
+  const CATALOG = window.CC_CATALOG;
+  if (CATALOG && Array.isArray(CATALOG.products) && CATALOG.products.length) D.products = CATALOG.products;
+  // Only show categories that have something in them
+  D.categories = D.categories.filter((c) => D.products.some((p) => p.category === c.id));
+  const HAS_PARTS = D.products.some((p) => p.type !== "bike");
   const { icon, bikeSVG, partSVG } = window.CC_ART;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -33,6 +40,9 @@
     });
   })();
   const bySlug = (s) => D.products.find((p) => p.slug === s);
+  // Every SKU has its own page, /products/<sku in lowercase>/, showing its model with that colour and size picked
+  const skuIndex = new Map();
+  D.products.forEach((p) => (p.variants || []).forEach((v) => { if (v.path && v.path !== p.slug) skuIndex.set(v.path, { p, v }); }));
 
   const PATHS = {
     home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/", finder: "bike-finder/", order: "how-to-order/",
@@ -83,9 +93,18 @@
      ======================================================= */
   const clip = (t, n = 158) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n - 1)).replace(/[,.;:]$/, "") + "…");
   const DEFAULT_IMAGE = "assets/og-image.png";
-  const productImage = (p) => (p.image ? absAsset(p.image) : absUrl(`og/products/${p.slug}.png`));
+  const productImage = (p, ci = 0) => { const ph = photoOf(p, ci); return ph ? absAsset(ph) : absUrl(`og/products/${p.slug}.png`); };
+  // Out-of-stock bikes from Cycle Beast can still be ordered: "back order", never sold out
+  function availabilityOf(p, v) {
+    if (v) return v.inStock ? "InStock" : "BackOrder";
+    if (p.variants && p.variants.length) return p.variants.some((x) => x.inStock) ? "InStock" : "BackOrder";
+    return p.stock === 0 ? "OutOfStock" : "InStock";
+  }
+  const OG_AVAIL = { InStock: "in stock", BackOrder: "available for order", OutOfStock: "out of stock" };
 
-  function setMeta({ title, description, image, imageAlt, type = "website", noindex = false, crumbs = [], product = null }) {
+  // canonicalPath: a SKU page names its model page as the main version for search engines,
+  // while its own address stays the share link (og:url) so Facebook posts keep the colour and size
+  function setMeta({ title, description, image, imageAlt, type = "website", noindex = false, crumbs = [], product = null, variant = null, canonicalPath = null }) {
     document.title = title ? `${title} | ${D.site.name}` : `${D.site.name} | ${D.site.tagline}`;
     if (MODE === "hash") return; // the preview build has no public address to describe
     const head = document.head;
@@ -94,7 +113,7 @@
     const prop = (n, v) => { find(`meta[property="${n}"]`, () => { const m = document.createElement("meta"); m.setAttribute("property", n); return m; }).setAttribute("content", v); };
 
     const path = currentPath();
-    const canonical = absUrl(path);
+    const canonical = absUrl(canonicalPath ?? path);
     const img = image || absAsset(DEFAULT_IMAGE);
     const desc = clip(description || D.site.description);
     named("description", desc);
@@ -105,7 +124,7 @@
     prop("og:type", type);
     prop("og:title", document.title);
     prop("og:description", desc);
-    prop("og:url", canonical);
+    prop("og:url", absUrl(path));
     prop("og:image", img);
     prop("og:image:width", "1200");
     prop("og:image:height", "630");
@@ -116,9 +135,10 @@
     named("twitter:image", img);
     head.querySelectorAll('meta[property^="product:"]').forEach((m) => m.remove());
     if (product) {
-      prop("product:price:amount", String(product.price));
+      prop("product:price:amount", String(variant ? variant.price : product.price));
       prop("product:price:currency", D.site.currency);
-      prop("product:availability", product.stock === 0 ? "out of stock" : "in stock");
+      prop("product:availability", OG_AVAIL[availabilityOf(product, variant)]);
+      if (variant) prop("product:retailer_item_id", variant.sku);
     }
 
     // Structured data for Google (schema.org)
@@ -140,22 +160,36 @@
       });
     }
     if (product) {
-      const p = product, cat = catOf(p.category);
-      const offer = {
-        "@type": "Offer", url: canonical, priceCurrency: D.site.currency, price: p.price,
-        availability: p.stock === 0 ? "https://schema.org/OutOfStock" : "https://schema.org/InStock", // stock left blank = in stock
-        itemCondition: "https://schema.org/NewCondition", seller: { "@id": org["@id"] }
-      };
-      if (p.compareAt) {
-        offer.priceSpecification = [
-          { "@type": "UnitPriceSpecification", price: p.price, priceCurrency: D.site.currency },
-          { "@type": "UnitPriceSpecification", priceType: "https://schema.org/StrikethroughPrice", price: p.compareAt, priceCurrency: D.site.currency }
-        ];
+      const p = product, cat = catOf(p.category), v = variant;
+      const variants = p.variants || [];
+      const single = v || (variants.length === 1 ? variants[0] : null);
+      const schemaAvail = (a) => "https://schema.org/" + a;
+      let offer;
+      if (!single && variants.length > 1) {
+        const prices = variants.map((x) => x.price);
+        offer = { "@type": "AggregateOffer", priceCurrency: D.site.currency, lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: variants.length, availability: schemaAvail(availabilityOf(p)), seller: { "@id": org["@id"] } };
+      } else {
+        const src = single || p;
+        offer = {
+          "@type": "Offer", url: absUrl(path), priceCurrency: D.site.currency, price: src.price,
+          availability: schemaAvail(availabilityOf(p, single)), // stock left blank = in stock
+          itemCondition: "https://schema.org/NewCondition", seller: { "@id": org["@id"] }
+        };
+        if (single) offer.sku = single.sku;
+        if (src.compareAt && src.compareAt > src.price) {
+          offer.priceSpecification = [
+            { "@type": "UnitPriceSpecification", price: src.price, priceCurrency: D.site.currency },
+            { "@type": "UnitPriceSpecification", priceType: "https://schema.org/StrikethroughPrice", price: src.compareAt, priceCurrency: D.site.currency }
+          ];
+        }
       }
+      const ci = v ? v.color : 0;
       graph.push({
         "@type": "Product", "@id": canonical + "#product", name: p.name, description: productDescription(p),
-        sku: p.id, image: [productImage(p)], category: cat ? cat.singular || cat.label : undefined,
-        url: canonical, offers: offer
+        sku: single ? single.sku : p.variants ? undefined : p.id, brand: p.brand ? { "@type": "Brand", name: p.brand } : undefined,
+        color: v && colorsOf(p).length > 1 ? colorName(p, ci) : undefined, size: v && v.size ? v.size : undefined,
+        image: photosOf(p, ci).length ? photosOf(p, ci).slice(0, 4).map(absAsset) : [productImage(p, ci)],
+        category: cat ? cat.singular || cat.label : undefined, url: canonical, offers: offer
       });
     }
     find("#ld-json", () => { const sc = document.createElement("script"); sc.type = "application/ld+json"; sc.id = "ld-json"; return sc; })
@@ -163,7 +197,7 @@
   }
 
   function productDescription(p) {
-    if (p.description) return p.description;
+    if (p.description) return p.description.split(/\n\s*\n/)[0].replace(/\s+/g, " ").trim();
     const cat = catOf(p.category);
     const specs = p.specs ? " " + Object.entries(p.specs).map(([k, v]) => `${k}: ${v}`).join(", ") + "." : "";
     return `${p.name}, ${(cat && (cat.singular || cat.label) || "").toLowerCase()} from ${D.site.name}.${specs}`;
@@ -289,12 +323,50 @@
   const colorsOf = (p) => (p.colors || []).map((c, i) => (typeof c === "string" ? { hex: c, name: `Colour ${i + 1}` } : c));
   const colorHex = (p, i = 0) => { const cs = colorsOf(p); return (cs[i] || cs[0] || { hex: "#3c78c6" }).hex; };
   const colorName = (p, i = 0) => { const cs = colorsOf(p); return (cs[i] || cs[0] || {}).name || ""; };
+  // Photos: a colour's own photos first, then the model's
+  const photosOf = (p, ci = 0) => { const c = (p.colors || [])[ci]; const own = c && typeof c === "object" && c.photos && c.photos.length ? c.photos : null; return own || (p.photos && p.photos.length ? p.photos : p.image ? [p.image] : []); };
+  const photoOf = (p, ci = 0) => photosOf(p, ci)[0] || "";
   const onSale = (p) => !!p.compareAt && p.compareAt > p.price;
   const soldOut = (p) => p.stock === 0;
   const weightOf = (p) => { const m = /([\d.]+)\s*kg/i.exec((p.specs || {}).Weight || ""); return m ? +m[1] : null; };
-  const frameOf = (p) => ((p.specs || {}).Frame || "").split(/[ ,]/)[0];
-  const metaLine = (p) => { const c = catOf(p.category); return [c ? c.singular || c.label : "", isBike(p) && p.fit ? LEVEL_LABEL[p.fit.level] : ""].filter(Boolean).join(" · "); };
-  const metaHTML = (p) => { const c = catOf(p.category); return `${esc(c ? c.singular || c.label : "")}${isBike(p) && p.fit ? `<span class="lvl"> · ${esc(LEVEL_LABEL[p.fit.level])}</span>` : ""}`; };
+  const frameOf = (p) => {
+    const f = (p.specs || {}).Frame || "";
+    if (/carbon|composite/i.test(f)) return "Carbon";
+    if (/alu|alloy|aluxx/i.test(f)) return "Aluminium";
+    if (/steel|cr-?mo|chromoly/i.test(f)) return "Steel";
+    if (/titanium/i.test(f)) return "Titanium";
+    return f.split(/[ ,]/)[0];
+  };
+  const levelOf = (p) => (isBike(p) && p.fit && p.fit.level ? LEVEL_LABEL[p.fit.level] : "");
+  const metaLine = (p) => { const c = catOf(p.category); return [c ? c.singular || c.label : "", p.year, levelOf(p)].filter(Boolean).join(" · "); };
+  const metaHTML = (p) => { const c = catOf(p.category); return `${esc(c ? c.singular || c.label : "")}${p.year ? ` · ${esc(p.year)}` : ""}${levelOf(p) ? `<span class="lvl"> · ${esc(levelOf(p))}</span>` : ""}`; };
+  // A short line about the bike: "Best for ..." from the placeholders, or its first highlight
+  const taglineOf = (p) => (p.bestFor ? `Best for ${lcFirst(p.bestFor)}` : p.highlights && p.highlights[0] ? p.highlights[0] : "");
+
+  /* ---------- Variants (colour + size → SKU, price, availability) ---------- */
+  const hasVariants = (p) => Array.isArray(p.variants) && p.variants.length > 0;
+  const sizeLabel = (s) => (s === "" ? "One size" : s);
+  const heightFor = (s) => D.sizes.find((z) => z.s === String(s).toUpperCase());
+  // Sizes offered in a colour (placeholder bikes use the standard frame sizes)
+  const sizeOptions = (p, ci) => (hasVariants(p) ? p.sizes.filter((sz) => p.variants.some((v) => v.color === ci && v.size === sz)) : isBike(p) ? D.sizes.map((z) => z.s) : []);
+  function variantOf(p, ci, size) {
+    if (!p || !hasVariants(p)) return null;
+    const vs = p.variants.filter((v) => v.color === ci);
+    if (size != null) return vs.find((v) => v.size === size) || null;
+    return vs.length === 1 ? vs[0] : null;
+  }
+  const defaultColor = (p) => (hasVariants(p) ? (p.variants.find((v) => v.inStock) || p.variants[0]).color : 0);
+  // Price for what's picked: the exact SKU once known, otherwise the lowest in that colour
+  function priceOf(p, ci, size) {
+    const v = variantOf(p, ci, size);
+    if (v) return { price: v.price, compareAt: v.compareAt };
+    if (!hasVariants(p)) return p;
+    const vs = p.variants.filter((x) => x.color === ci);
+    if (!vs.length) return p;
+    const min = vs.reduce((a, b) => (b.price < a.price ? b : a));
+    return { price: min.price, compareAt: min.compareAt, priceFrom: new Set(vs.map((x) => x.price)).size > 1 };
+  }
+  const linePrice = (l) => { const p = byId(l.id); const v = variantOf(p, l.color, l.size); return v ? v.price : p.price; };
   // Specs in a fixed order, so every bike lists them the same way
   const specKeys = (list) => { const all = [...new Set(list.flatMap((p) => Object.keys(p.specs || {})))]; return [...SPEC_ORDER.filter((k) => all.includes(k)), ...all.filter((k) => !SPEC_ORDER.includes(k))]; };
   const specEntries = (p) => specKeys([p]).map((k) => [k, p.specs[k]]);
@@ -307,10 +379,11 @@
   const shortSpec = (v) => v.replace(/^Up to /, "").replace(/ speed$/, "").replace(/,.*$/, "");
 
   function art(p, colorIdx = 0, label = true) {
-    if (p.image) return `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" decoding="async">`;
+    const ph = photoOf(p, colorIdx);
+    if (ph) return `<img src="${esc(ph)}" alt="${label ? esc(p.name + (colorsOf(p).length > 1 ? `, ${colorName(p, colorIdx)}` : "")) : ""}" loading="lazy" decoding="async">`;
     if (!isBike(p)) return partSVG(p.icon, "#3c78c6", label ? p.name : "");
     const s = p.specs || {};
-    return bikeSVG(colorHex(p, colorIdx), p.category, {
+    return bikeSVG(colorHex(p, colorIdx), p.category === "other" ? "city" : p.category, {
       label: label ? p.name : "",
       deepRims: /deep/i.test(s.Wheels || ""),
       fullSus: /rear/i.test(s.Suspension || ""),
@@ -341,11 +414,12 @@
   }
 
   function priceHTML(p, withSave = true) {
-    return `<span class="price">${peso(p.price)}${onSale(p) ? `<s>${peso(p.compareAt)}</s>` : ""}</span>${onSale(p) && withSave ? `<span class="save">Save ${peso(p.compareAt - p.price)}</span>` : ""}`;
+    return `<span class="price">${p.priceFrom ? `<small class="from">From</small> ` : ""}${peso(p.price)}${onSale(p) ? `<s>${peso(p.compareAt)}</s>` : ""}</span>${onSale(p) && withSave ? `<span class="save">Save ${peso(p.compareAt - p.price)}</span>` : ""}`;
   }
   function tagsHTML(p) {
     const tags = [];
     if (soldOut(p)) tags.push(`<span class="tag">Sold out</span>`);
+    if (p.orderOnly) tags.push(`<span class="tag order">Available to order</span>`);
     if (onSale(p)) tags.push(`<span class="tag sale">-${Math.round((1 - p.price / p.compareAt) * 100)}%</span>`);
     if (p.tag) tags.push(`<span class="tag ${esc(p.tag.toLowerCase())}">${esc(p.tag)}</span>`);
     return tags.length ? `<span class="tags">${tags.join("")}</span>` : "";
@@ -394,7 +468,7 @@
       <div class="card-body">
         <span class="card-meta">${metaHTML(p)}</span>
         <h3 class="card-title"><a href="${href}">${esc(p.name)}</a></h3>
-        ${o.reasons ? `<ul class="reasons">${o.reasons.map((r) => `<li>${icon("check", 15)}<span>${esc(r)}</span></li>`).join("")}</ul>` : (p.bestFor ? `<p class="card-best">Best for ${esc(lcFirst(p.bestFor))}</p>` : "")}
+        ${o.reasons ? `<ul class="reasons">${o.reasons.map((r) => `<li>${icon("check", 15)}<span>${esc(r)}</span></li>`).join("")}</ul>` : (taglineOf(p) ? `<p class="card-best">${esc(taglineOf(p))}</p>` : "")}
         ${bike ? chipsHTML(p) : ""}
         <div class="price-row">${priceHTML(p)}${stars(p)}</div>
         ${(p.colors && p.colors.length > 1) || (p.stock > 0 && p.stock <= 5) ? `<div class="card-row">
@@ -473,12 +547,12 @@
         </div>
       </section>
 
-      <section class="section tight">
+      ${HAS_PARTS ? `<section class="section tight">
         <div class="wrap">
           <div class="section-head"><div><h2>Parts and gear</h2><p>Upgrade your ride or replace what's worn out.</p></div><a class="text-link" href="${url(PATHS.parts)}">Shop parts ${icon("arrow", 16)}</a></div>
           <div class="rail">${parts.map((p) => card(p)).join("")}</div>
         </div>
-      </section>
+      </section>` : ""}
 
       ${recent.length ? `<section class="section tight">
         <div class="wrap">
@@ -682,14 +756,76 @@
   const selOf = (el) => (el.closest("#quickCard") ? QV : PDP);
   const rootOf = (el) => el.closest("#quickCard") || $(".pdp") || app;
 
-  // Colour and size pickers, shared by the product page and quick view
-  function optionsHTML(p, sel) {
-    return `${p.colors && p.colors.length > 1 ? `<div class="pdp-block"><h4>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h4><div class="swatches lg">${colorsOf(p).map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>` : ""}
-      ${isBike(p) ? `<div class="pdp-block"><h4>Frame size<b class="size-picked">${sel.size || ""}</b></h4>
-        <div class="size-grid">${D.sizes.map((z) => `<button class="size-btn ${sel.size === z.s ? "on" : ""}" data-action="opt-size" data-s="${z.s}" aria-pressed="${sel.size === z.s}" aria-label="Size ${z.s}, for riders ${z.min} to ${z.max} cm">${z.s}<small>${z.min}–${z.max} cm</small></button>`).join("")}</div>
-        <div class="size-helper"><label for="${sel.key}Height">${icon("ruler", 16)} Not sure? Enter your height</label><input type="number" id="${sel.key}Height" inputmode="numeric" placeholder="cm" min="120" max="220" data-height><span class="size-msg" aria-live="polite"></span></div>
-      </div>` : ""}`;
+  // Colour, size and availability, shared by the product page and quick view
+  function initSel(sel, p, v) {
+    Object.assign(sel, { id: p.id, qty: 1, color: v ? v.color : defaultColor(p), size: v ? v.size : null });
+    autoSize(p, sel);
   }
+  // Keep the size only if it exists in the chosen colour; pick it for the shopper when there's just one
+  function autoSize(p, sel) {
+    const sizes = sizeOptions(p, sel.color);
+    if (sel.size != null && !sizes.includes(sel.size)) sel.size = null;
+    if (sel.size == null && hasVariants(p) && sizes.length === 1) sel.size = sizes[0];
+  }
+  const needsSize = (p, sel) => isBike(p) && sel.size == null && sizeOptions(p, sel.color).length > 0;
+
+  function availHTML(p, sel) {
+    if (!hasVariants(p)) return p.stock > 0 && p.stock <= 5 ? `<span class="stock-low">Only ${p.stock} left in stock</span>` : "";
+    const v = variantOf(p, sel.color, sel.size);
+    const sku = v ? `<small class="sku">SKU ${esc(v.sku)}</small>` : "";
+    if (v && v.inStock) return `${icon("check", 18)}<span><b>In stock</b>${v.qty > 0 && v.qty <= 3 ? `, only ${v.qty} left` : ""}${sku}</span>`;
+    if (v) return `${icon("truck", 18)}<span><b>Available to order.</b> We'll confirm the delivery time when you send your order.${sku}</span>`;
+    const vs = p.variants.filter((x) => x.color === sel.color);
+    if (vs.length && vs.every((x) => !x.inStock)) return `${icon("truck", 18)}<span><b>Available to order</b> in this colour.</span>`;
+    return "";
+  }
+
+  function optsInnerHTML(p, sel) {
+    const cs = colorsOf(p), sizes = sizeOptions(p, sel.color);
+    const showSizes = isBike(p) && (sizes.length > 1 || (sizes.length === 1 && sizes[0] !== ""));
+    const colourBlock = cs.length > 1
+      ? `<div class="pdp-block"><h4>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h4><div class="swatches lg">${cs.map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>`
+      : cs.length === 1 && hasVariants(p) && cs[0].name !== "Standard" ? `<p class="one-colour">Colour <b>${esc(cs[0].name)}</b></p>` : "";
+    const lettered = sizes.some(heightFor);
+    const sizeBlock = showSizes ? `<div class="pdp-block"><h4>${lettered || !hasVariants(p) ? "Frame size" : "Size"}<b class="size-picked">${sel.size != null && sizes.length > 1 ? esc(sizeLabel(sel.size)) : ""}</b></h4>
+        <div class="size-grid">${sizes.map((sz) => {
+          const z = heightFor(sz), v = variantOf(p, sel.color, sz), on = sel.size === sz;
+          const sub = z ? `${z.min}–${z.max} cm` : v ? (v.inStock ? "In stock" : "To order") : "";
+          return `<button class="size-btn ${on ? "on" : ""} ${v && !v.inStock ? "to-order" : ""}" data-action="opt-size" data-s="${esc(sz)}" aria-pressed="${on}" aria-label="Size ${esc(sizeLabel(sz))}${z ? `, for riders ${z.min} to ${z.max} cm` : ""}${v && !v.inStock ? ", available to order" : ""}">${esc(sizeLabel(sz))}${sub ? `<small>${sub}</small>` : ""}</button>`;
+        }).join("")}</div></div>` : "";
+    return colourBlock + sizeBlock + `<p class="avail" aria-live="polite">${availHTML(p, sel)}</p>`;
+  }
+  function optionsHTML(p, sel) {
+    const helper = isBike(p) && sizeOptions(p, sel.color).some(heightFor)
+      ? `<div class="size-helper"><label for="${sel.key}Height">${icon("ruler", 16)} Not sure? Enter your height</label><input type="number" id="${sel.key}Height" inputmode="numeric" placeholder="cm" min="120" max="220" data-height><span class="size-msg" aria-live="polite"></span></div>` : "";
+    return `<div class="opts">${optsInnerHTML(p, sel)}</div>${helper}`;
+  }
+  function galleryHTML(p, ci) {
+    const ph = photosOf(p, ci);
+    return ph.length > 1 ? `<div class="thumbs" role="group" aria-label="More photos">${ph.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-action="photo" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" decoding="async"></button>`).join("")}</div>` : "";
+  }
+  // Redraw what depends on the selection: options, price, buy bar, and (on the product page) the address
+  function refreshSelection(root, sel) {
+    const p = byId(sel.id);
+    if (!p) return;
+    const opts = $(".opts", root); if (opts) opts.innerHTML = optsInnerHTML(p, sel);
+    const pr = $(".sel-price", root); if (pr) pr.innerHTML = priceHTML(priceOf(p, sel.color, sel.size)) + stars(p);
+    if (sel !== PDP) return;
+    const barBtn = $("#buyBarBtn"); if (barBtn) barBtn.textContent = buyLabel();
+    const barPrice = $("#buyBar .price"); if (barPrice) barPrice.textContent = peso(priceOf(p, sel.color, sel.size).price);
+    const v = variantOf(p, sel.color, sel.size);
+    if (v && MODE === "path" && !PRERENDER) { try { history.replaceState(history.state, "", url(`products/${v.path}/`)); } catch (e) { /* not allowed in this frame */ } }
+  }
+  function showColour(root, sel) {
+    const p = byId(sel.id);
+    const media = sel === QV ? $("#quickArt") : $("#pdpArt");
+    if (media) media.innerHTML = art(p, sel.color);
+    const thumbs = $("#pdpThumbs"); if (thumbs && sel === PDP) thumbs.innerHTML = galleryHTML(p, sel.color);
+  }
+  const descHTML = (p) => (p.description ? p.description.split(/\n\s*\n/).map((para) => `<p class="pdp-desc">${esc(para.trim())}</p>`).join("") : `<p class="pdp-desc">${esc(productDescription(p))}</p>`);
+  const highlightsHTML = (p) => (p.highlights && p.highlights.length ? `<ul class="highlights">${p.highlights.map((h) => `<li>${icon("check", 16)}<span>${esc(h)}</span></li>`).join("")}</ul>` : "");
+  // Brand and model year sit at the top of the spec table for bikes from Cycle Beast
+  const fullSpecs = (p) => [...(p.brand ? [["Brand", p.brand]] : []), ...(p.year ? [["Model year", String(p.year)]] : []), ...(p.specs ? specEntries(p) : [])];
 
   // The closest alternatives, for the side-by-side table on a bike's page
   function alternatives(p, count = 2) {
@@ -706,18 +842,18 @@
       <div class="table-scroll"><table class="vs-table">
         <thead><tr><th scope="row"><span class="sr-only">Spec</span></th>${cols.map((x, i) => `<th scope="col" class="${i ? "" : "this"}">${i ? `<a href="${url(PATHS.product(x))}">${esc(x.name)}</a>` : `<small>This bike</small>${esc(x.name)}`}</th>`).join("")}</tr></thead>
         <tbody>
-          <tr><th scope="row">Price</th>${cols.map((x, i) => `<td class="${i ? "" : "this"}">${peso(x.price)}${i ? `<span class="diff">${diff(x)}</span>` : ""}</td>`).join("")}</tr>
-          <tr><th scope="row">Best for</th>${cols.map((x, i) => `<td class="${i ? "" : "this"}">${esc(x.bestFor || "—")}</td>`).join("")}</tr>
+          <tr><th scope="row">Price</th>${cols.map((x, i) => `<td class="${i ? "" : "this"}">${x.priceFrom ? "From " : ""}${peso(x.price)}${i ? `<span class="diff">${diff(x)}</span>` : ""}</td>`).join("")}</tr>
+          <tr><th scope="row">${cols.some((x) => x.bestFor) ? "Best for" : "Highlight"}</th>${cols.map((x, i) => `<td class="${i ? "" : "this"}">${esc(x.bestFor || (x.highlights || [])[0] || "—")}</td>`).join("")}</tr>
           ${keys.map((k) => `<tr><th scope="row">${esc(k)}</th>${cols.map((x, i) => `<td class="${i ? "" : "this"}">${esc((x.specs || {})[k] || "—")}</td>`).join("")}</tr>`).join("")}
         </tbody>
       </table></div>
       <p style="margin-top:14px"><button class="btn btn-ghost btn-sm" data-action="compare-set" data-ids="${cols.map((x) => x.id).join(",")}">${icon("compare", 16)}Compare all specs</button></p>`;
   }
 
-  function viewProduct(id) {
+  function viewProduct(id, variant) {
     const p = byId(id);
     if (!p) return viewNotFound();
-    Object.assign(PDP, { id, size: null, color: 0, qty: 1 });
+    initSel(PDP, p, variant);
     markViewed(p);
     const c = catOf(p.category);
     const bike = isBike(p);
@@ -725,27 +861,31 @@
     const catTitle = c.type === "bike" ? `${c.label} Bikes` : c.label;
     const lvl = levelIndex();
     const related = bike
-      ? D.products.filter((x) => !isBike(x)).slice(0, 6)
+      ? (HAS_PARTS ? D.products.filter((x) => !isBike(x)).slice(0, 6) : alternatives(p, 6))
       : D.products.filter((x) => x.id !== p.id && x.category === p.category).concat(D.products.filter((x) => !isBike(x) && x.category !== p.category)).slice(0, 6);
-    const xp = Math.max(1, Math.floor(p.price / 1000));
-    const specs = p.specs ? specEntries(p) : [];
+    const shown = priceOf(p, PDP.color, PDP.size);
+    const xp = Math.max(1, Math.floor(shown.price / 1000));
+    const specs = fullSpecs(p);
 
     app.innerHTML = `
       <div class="wrap">
         ${crumbsHTML([top, { name: catTitle, path: PATHS.cat(c) }, { name: p.name }], "padding-top:20px")}
         <div class="pdp">
-          <div class="pdp-media" id="pdpArt">${art(p)}</div>
+          <div class="pdp-visual">
+            <div class="pdp-media" id="pdpArt">${art(p, PDP.color)}</div>
+            <div id="pdpThumbs">${galleryHTML(p, PDP.color)}</div>
+          </div>
           <div class="pdp-buy">
             <div>
               ${tagsHTML(p)}
-              <span class="card-meta" style="display:block;margin-top:${onSale(p) || p.tag ? 12 : 0}px">${esc(metaLine(p))}</span>
+              <span class="card-meta" style="display:block;margin-top:${onSale(p) || p.tag || p.orderOnly ? 12 : 0}px">${esc(metaLine(p))}</span>
               <h1>${esc(p.name)}</h1>
             </div>
-            <div class="price-row">${priceHTML(p)}${stars(p)}</div>
-            <p class="pdp-desc">${esc(productDescription(p))}</p>
+            <div class="price-row sel-price">${priceHTML(shown)}${stars(p)}</div>
+            <div>${descHTML(p)}</div>
+            ${highlightsHTML(p)}
             ${glanceHTML(p)}
             ${optionsHTML(p, PDP)}
-            ${p.stock > 0 && p.stock <= 5 ? `<p class="stock-low">Only ${p.stock} left in stock</p>` : ""}
             <div class="buy-row">
               <div class="qty"><button data-action="qty" data-d="-1" aria-label="Decrease quantity">${icon("minus", 16)}</button><span id="qtyVal" aria-live="polite">1</span><button data-action="qty" data-d="1" aria-label="Increase quantity">${icon("plus", 16)}</button></div>
               <button class="btn btn-brand" data-action="add-sel" ${soldOut(p) ? "disabled" : ""}>${soldOut(p) ? "Sold out" : "Add to cart"}</button>
@@ -753,9 +893,9 @@
             </div>
             <div class="pdp-links">${bike ? compareBtn(p, "text-link") : ""}${askBtn(p)}</div>
             <ul class="assure">
-              <li>${icon("truck")}${p.price >= D.freeShippingThreshold ? "Free shipping on this item" : `Free shipping on orders over ${peso(D.freeShippingThreshold)}`}</li>
+              <li>${icon("truck")}${shown.price >= D.freeShippingThreshold ? "Free shipping on this item" : `Free shipping on orders over ${peso(D.freeShippingThreshold)}`}</li>
               <li>${icon("returns")}30-day returns</li>
-              <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(p.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
+              <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(shown.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
             </ul>
           </div>
         </div>
@@ -763,17 +903,20 @@
           <section>${specs.length ? `<h2>Specifications</h2><table class="spec-table"><tbody>${specs.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</tbody></table>` : ""}</section>
           <section>${bike ? versusHTML(p) : ""}</section>
         </div>` : ""}
-        ${related.length ? `<section class="section tight"><div class="section-head"><h2>${bike ? "Complete your build" : "You may also like"}</h2></div><div class="rail">${related.map((x) => card(x)).join("")}</div></section>` : ""}
+        ${related.length ? `<section class="section tight"><div class="section-head"><h2>${bike ? (HAS_PARTS ? "Complete your build" : "Similar bikes") : "You may also like"}</h2></div><div class="rail">${related.map((x) => card(x)).join("")}</div></section>` : ""}
       </div>`;
     setupBuyBar(p);
+    const v = variant || null;
+    const what = v ? [colorsOf(p).length > 1 ? colorName(p, v.color) : "", v.size ? `size ${v.size}` : ""].filter(Boolean).join(", ") : "";
     setMeta({
-      title: `${p.name} – ${c.singular || c.label}`,
-      description: `${productDescription(p)} ${peso(p.price)} at ${D.site.name}.`,
+      title: `${p.name}${what ? ` (${what})` : ""} – ${c.singular || c.label}`,
+      description: `${productDescription(p)} ${what ? `${what[0].toUpperCase() + what.slice(1)}, ` : ""}${peso(v ? v.price : p.price)}${!v && p.priceFrom ? " and up" : ""} at ${D.site.name}.`,
       type: "product",
-      image: productImage(p),
+      image: productImage(p, v ? v.color : 0),
       imageAlt: p.name,
       crumbs: [top, { name: catTitle, path: PATHS.cat(c) }, { name: p.name, path: PATHS.product(p) }],
-      product: p
+      product: p, variant: v,
+      canonicalPath: v ? PATHS.product(p) : null
     });
   }
 
@@ -789,10 +932,17 @@
 
   // A buy button that stays on screen whenever the main one is out of view
   let buyObserver = null;
-  function buyLabel() { const p = byId(PDP.id); return !p ? "" : soldOut(p) ? "Sold out" : isBike(p) && !PDP.size ? "Choose size" : isBike(p) ? `Add to cart · ${PDP.size}` : "Add to cart"; }
+  function buyLabel() {
+    const p = byId(PDP.id);
+    if (!p) return "";
+    if (soldOut(p)) return "Sold out";
+    if (needsSize(p, PDP)) return "Choose size";
+    return isBike(p) && PDP.size && sizeOptions(p, PDP.color).length > 1 ? `Add to cart · ${sizeLabel(PDP.size)}` : "Add to cart";
+  }
   function setupBuyBar(p) {
     const bar = $("#buyBar");
-    bar.innerHTML = `<div class="buy-bar-inner"><div class="info"><strong>${esc(p.name)}</strong><span class="price">${peso(p.price)}</span>${onSale(p) ? `<small><s>${peso(p.compareAt)}</s></small>` : ""}</div><button class="btn btn-brand" data-action="add-sel" id="buyBarBtn" ${soldOut(p) ? "disabled" : ""}>${buyLabel()}</button></div>`;
+    const pr = priceOf(p, PDP.color, PDP.size);
+    bar.innerHTML = `<div class="buy-bar-inner"><div class="info"><strong>${esc(p.name)}</strong><span class="price">${peso(pr.price)}</span>${onSale(pr) ? `<small><s>${peso(pr.compareAt)}</s></small>` : ""}</div><button class="btn btn-brand" data-action="add-sel" id="buyBarBtn" ${soldOut(p) ? "disabled" : ""}>${buyLabel()}</button></div>`;
     const row = $(".pdp .buy-row");
     if (PRERENDER || !row || !("IntersectionObserver" in window)) return;
     buyObserver = new IntersectionObserver(([e]) => {
@@ -813,15 +963,15 @@
   function openQuick(id) {
     const p = byId(id);
     if (!p) return;
-    Object.assign(QV, { id, size: null, color: 0, qty: 1 });
-    const specs = p.specs ? specEntries(p) : [];
+    initSel(QV, p);
+    const specs = fullSpecs(p);
     $("#quickCard").innerHTML = `<button class="icon-btn modal-close" data-action="close-all" aria-label="Close">${icon("close")}</button>
       <div class="quick">
-        <div class="quick-media" id="quickArt">${art(p)}</div>
+        <div class="quick-media" id="quickArt">${art(p, QV.color)}</div>
         <div class="quick-info">
           <div><span class="card-meta">${esc(metaLine(p))}</span><h2>${esc(p.name)}</h2></div>
-          <div class="price-row">${priceHTML(p)}${stars(p)}</div>
-          ${p.bestFor ? `<p class="card-best">Best for ${esc(lcFirst(p.bestFor))}</p>` : ""}
+          <div class="price-row sel-price">${priceHTML(priceOf(p, QV.color, QV.size))}${stars(p)}</div>
+          ${taglineOf(p) ? `<p class="card-best">${esc(taglineOf(p))}</p>` : ""}
           ${glanceHTML(p)}
           ${optionsHTML(p, QV)}
           <div class="buy-row"><button class="btn btn-brand" data-action="add-sel" ${soldOut(p) ? "disabled" : ""}>${soldOut(p) ? "Sold out" : "Add to cart"}</button>${favBtn(p, "btn btn-ghost")}</div>
@@ -874,9 +1024,13 @@
   }
 
   function viewNotFound() {
-    app.innerHTML = `<div class="wrap empty" style="padding-top:110px;padding-bottom:110px"><div class="big">🛞</div><h1>Flat tyre! Page not found.</h1><p>The page you're looking for doesn't exist or has moved.</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><a class="btn btn-brand" href="${url()}">Back to home</a><a class="btn btn-ghost" href="${url(PATHS.bikes)}">Browse bikes</a></div></div>`;
-    setMeta({ title: "Page not found", noindex: true });
+    const gone = currentPath().startsWith("products/");
+    app.innerHTML = gone
+      ? `<div class="wrap empty" style="padding-top:110px;padding-bottom:110px"><div class="big">🚲</div><h1>This bike isn't listed right now</h1><p>It may have sold out or been replaced by a newer model.</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><a class="btn btn-brand" href="${url(PATHS.bikes)}">See all bikes</a><a class="btn btn-ghost" href="${url(PATHS.finder)}">Find a similar bike</a>${C.viber ? `<a class="btn btn-ghost" href="${viberLink(`Hi ${D.site.name}! I saw a bike at ${location.href} but it isn't listed anymore. Is it still available?`)}">Ask us about it</a>` : ""}</div></div>`
+      : `<div class="wrap empty" style="padding-top:110px;padding-bottom:110px"><div class="big">🛞</div><h1>Flat tyre! Page not found.</h1><p>The page you're looking for doesn't exist or has moved.</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><a class="btn btn-brand" href="${url()}">Back to home</a><a class="btn btn-ghost" href="${url(PATHS.bikes)}">Browse bikes</a></div></div>`;
+    setMeta({ title: gone ? "Bike not listed" : "Page not found", noindex: true });
   }
+
 
   /* =======================================================
      CART
@@ -895,7 +1049,7 @@
   }
 
   function cartTotals() {
-    const sub = S.cart.reduce((s, l) => s + byId(l.id).price * l.qty, 0);
+    const sub = S.cart.reduce((s, l) => s + linePrice(l) * l.qty, 0);
     const lvlPct = LEVEL_PERKS[levelIndex()];
     const code = S.appliedCode ? D.spinPrizes.find((x) => x.code === S.appliedCode) : null;
     const codePct = code && code.pct ? code.pct : 0;
@@ -937,15 +1091,16 @@
     const inCart = new Set(S.cart.map((l) => l.id));
     const upsell = D.products.filter((p) => p.type === "part" && !inCart.has(p.id) && p.price <= Math.max(left, 3000)).slice(0, 3);
     $("#cartBody").innerHTML = S.cart.map((l) => {
-      const p = byId(l.id);
+      const p = byId(l.id), v = variantOf(p, l.color, l.size), each = linePrice(l);
+      const opts = [colorsOf(p).length > 1 ? colorName(p, l.color) : "", l.size ? `Size ${sizeLabel(l.size)}` : "", peso(each)].filter(Boolean).join(" · ");
       return `<div class="cart-line">
         <div class="thumb">${art(p, l.color, false)}</div>
-        <div><strong>${esc(p.name)}</strong><small>${l.size ? "Size " + l.size + " · " : ""}${peso(p.price)}</small>
+        <div><strong>${esc(p.name)}</strong><small>${esc(opts)}</small>${v && !v.inStock ? `<small class="to-order-note">Available to order</small>` : ""}
           <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
             <div class="qty"><button data-action="line-qty" data-key="${l.key}" data-d="-1" aria-label="Decrease">−</button><span>${l.qty}</span><button data-action="line-qty" data-key="${l.key}" data-d="1" aria-label="Increase">+</button></div>
             <button class="remove" data-action="line-remove" data-key="${l.key}">Remove</button>
           </div></div>
-        <b>${peso(p.price * l.qty)}</b>
+        <b>${peso(each * l.qty)}</b>
       </div>`;
     }).join("") + (upsell.length ? `<div class="upsell"><h5>Quick adds${t.freeShip ? "" : " to unlock free shipping"}</h5>${upsell.map((p) => `<div class="upsell-item"><span>${esc(p.name)} · <b>${peso(p.price)}</b></span><button class="btn btn-sm btn-ghost" data-action="add" data-id="${p.id}">+ Add</button></div>`).join("")}</div>` : "");
 
@@ -979,9 +1134,10 @@
   function orderText(ref, who) {
     const t = cartTotals();
     const items = S.cart.map((l) => {
-      const p = byId(l.id);
-      const opts = [l.size && `size ${l.size}`, p.colors && p.colors.length > 1 && colorName(p, l.color)].filter(Boolean).join(", ");
-      return `• ${l.qty} × ${p.name}${opts ? ` (${opts})` : ""} – ${peso(p.price * l.qty)}`;
+      const p = byId(l.id), v = variantOf(p, l.color, l.size);
+      const opts = [colorsOf(p).length > 1 && colorName(p, l.color), l.size && `size ${sizeLabel(l.size)}`].filter(Boolean).join(", ");
+      const extra = v ? `\n  SKU ${v.sku}${v.inStock ? "" : " (available to order)"}` : "";
+      return `• ${l.qty} × ${p.name}${opts ? ` (${opts})` : ""} – ${peso(linePrice(l) * l.qty)}${extra}`;
     });
     const money = [`Subtotal: ${peso(t.sub)}`];
     if (t.lvlPct) money.push(`Rider Club ${D.levels[levelIndex()].name} discount: ${t.lvlPct}%`);
@@ -1013,7 +1169,7 @@
 
   function renderOrderForm() {
     const t = cartTotals(), who = S.customer, ch = chatChannel();
-    const lines = S.cart.map((l) => { const p = byId(l.id); return `<li><span>${l.qty} × ${esc(p.name)}${l.size ? ` · ${esc(l.size)}` : ""}${p.colors && p.colors.length > 1 ? ` · ${esc(colorName(p, l.color))}` : ""}</span><b>${peso(p.price * l.qty)}</b></li>`; }).join("");
+    const lines = S.cart.map((l) => { const p = byId(l.id); return `<li><span>${l.qty} × ${esc(p.name)}${colorsOf(p).length > 1 ? ` · ${esc(colorName(p, l.color))}` : ""}${l.size ? ` · ${esc(sizeLabel(l.size))}` : ""}</span><b>${peso(linePrice(l) * l.qty)}</b></li>`; }).join("");
     $("#orderCard").innerHTML = `<button class="icon-btn modal-close" data-action="close-all" aria-label="Close">${icon("close")}</button>
       <h2>Send order request</h2>
       <p class="muted" style="margin-top:8px">No payment is taken on the website. A sales rep confirms stock, size, final price and delivery with you, then sends payment details.</p>
@@ -1149,6 +1305,10 @@
      ======================================================= */
   const budgetPct = (b) => Math.max(0, Math.min(100, ((b - D.finder.budgetMin) / (D.finder.budgetMax - D.finder.budgetMin)) * 100));
   const terrainOf = (v) => TERRAINS.find((t) => t.v === v);
+  // Only offer riding types, goals and levels that the bikes for sale actually have
+  const terrainsOffered = () => TERRAINS.filter((t) => D.products.some((p) => isBike(p) && p.fit && p.fit.terrain === t.v));
+  const hasFit = (k) => D.products.some((p) => isBike(p) && p.fit && p.fit[k]);
+  const catLink = (t) => { const c = t && catOf(t.cat); return c ? PATHS.cat(c) : PATHS.bikes; };
 
   function finderControls(mode) {
     const f = S.finder, cfg = D.finder;
@@ -1160,13 +1320,13 @@
         <div class="range-ends"><span>${pesoK(cfg.budgetMin)}</span><span>${pesoK(cfg.budgetMax)}</span></div>
         <div class="chip-list" style="margin-top:10px">${cfg.quick.map((q) => `<button class="chip ${f.budget === q ? "on" : ""}" data-action="finder-budget" data-v="${q}">${pesoK(q)}</button>`).join("")}</div>
       </div>`;
-    const ride = `<span class="field-label">Where will you ride?</span>${chips("terrain", TERRAINS, "Anywhere")}`;
+    const ride = `<span class="field-label">Where will you ride?</span>${chips("terrain", terrainsOffered(), "Anywhere")}`;
     if (mode === "compact") return `${budget}<div>${ride}<p class="finder-more"><a class="text-link" href="${url(PATHS.finder)}">${icon("sliders", 16)}More options in the Bike Finder</a></p></div>`;
     return `${budget}
       <div>${ride}</div>
-      <div><span class="field-label">What matters most?</span>${chips("goal", GOALS, "No preference")}</div>
-      <div><span class="field-label">Your experience</span>${chips("level", LEVELS, "Any")}</div>
-      <div><span class="field-label">Electric assist</span>${chips("assist", [{ v: "only", label: "E-bikes only" }, { v: "none", label: "No e-bikes" }], "Either", "any")}</div>
+      ${hasFit("goal") ? `<div><span class="field-label">What matters most?</span>${chips("goal", GOALS, "No preference")}</div>` : ""}
+      ${hasFit("level") ? `<div><span class="field-label">Your experience</span>${chips("level", LEVELS, "Any")}</div>` : ""}
+      ${catOf("electric") ? `<div><span class="field-label">Electric assist</span>${chips("assist", [{ v: "only", label: "E-bikes only" }, { v: "none", label: "No e-bikes" }], "Either", "any")}</div>` : ""}
       <button class="text-link" data-action="finder-reset">Start over</button>`;
   }
 
@@ -1180,8 +1340,9 @@
         const fit = p.fit || {};
         const over = p.price - f.budget;
         const terrain = !f.terrain || fit.terrain === f.terrain ? 45 : (near[f.terrain] || []).includes(fit.terrain) ? 18 : 0;
-        const goal = !f.goal || fit.goal === f.goal ? 25 : 8;
-        const level = f.level ? [15, 8, 0][Math.abs(order.indexOf(fit.level) - order.indexOf(f.level))] ?? 0 : 15;
+        // A bike with no goal or level information scores in the middle rather than losing out
+        const goal = !f.goal ? 25 : !fit.goal ? 15 : fit.goal === f.goal ? 25 : 8;
+        const level = !f.level ? 15 : !fit.level ? 10 : [15, 8, 0][Math.abs(order.indexOf(fit.level) - order.indexOf(f.level))] ?? 0;
         const money = over <= 0 ? 15 * Math.max(0.4, p.price / f.budget) : Math.max(0, 15 - (over / (f.budget * D.finder.stretch)) * 15);
         return {
           p, over, score: Math.round(terrain + goal + level + money),
@@ -1226,7 +1387,8 @@
     else out.push("Right on your budget");
     const g = GOALS.find((x) => x.v === f.goal);
     if (g && fit.goal === f.goal) out.push(g.why);
-    if (f.level ? fit.level === f.level : fit.level === "beginner") out.push(LEVEL_LABEL[fit.level]);
+    if (fit.level && (f.level ? fit.level === f.level : fit.level === "beginner")) out.push(LEVEL_LABEL[fit.level]);
+    if (hasVariants(p)) out.push(p.variants.some((v) => v.inStock) ? "In stock" : "Available to order");
     if (onSale(p)) out.push(`On sale, ${peso(p.compareAt - p.price)} off`);
     if (frameOf(p) === "Carbon") out.push("Carbon frame");
     return out.slice(0, 3);
@@ -1251,7 +1413,7 @@
     const f = homeFinder(), { picks, fits } = finderPicks(f);
     const t = terrainOf(f.terrain);
     const kind = t ? t.kind + " " : "";
-    const listing = (t ? PATHS.cat(catOf(t.cat)) : PATHS.bikes);
+    const listing = catLink(t);
     if (!picks.length) return finderEmptyHTML(f, kind);
     return `<div class="picks-head">
         <div><h2>Top ${kind}picks for ${peso(f.budget)}</h2>
@@ -1298,7 +1460,8 @@
     const q = currentQuery(), f = S.finder;
     const pick = (k, list, fallback) => (q.has(k) && list.includes(q.get(k)) ? q.get(k) : fallback);
     if (+q.get("budget") >= 1000) f.budget = Math.round(+q.get("budget"));
-    f.terrain = pick("ride", TERRAINS.map((t) => t.v), f.terrain);
+    f.terrain = pick("ride", terrainsOffered().map((t) => t.v), f.terrain);
+    if (f.terrain && !terrainsOffered().some((t) => t.v === f.terrain)) f.terrain = "";
     f.goal = pick("goal", GOALS.map((g) => g.v), f.goal);
     f.level = pick("level", LEVELS.map((l) => l.v), f.level);
     f.assist = pick("assist", ["any", "only", "none"], f.assist);
@@ -1473,7 +1636,8 @@
         <thead><tr><th scope="row"><span class="sr-only">Spec</span></th>${items.map((p) => `<td><a class="thumb" href="${url(PATHS.product(p))}" data-action="close-all" tabindex="-1" aria-hidden="true">${art(p, 0, false)}</a><a href="${url(PATHS.product(p))}" data-action="close-all"><b>${esc(p.name)}</b></a><span class="card-meta">${esc(metaLine(p))}</span></td>`).join("")}</tr></thead>
         <tbody>
           ${row("Price", items.map((p) => peso(p.price) + (onSale(p) ? ` (was ${peso(p.compareAt)})` : "")), (i) => items[i].price === lowest)}
-          ${row("Best for", items.map((p) => p.bestFor))}
+          ${items.some((p) => p.brand) ? row("Brand", items.map((p) => p.brand)) : ""}
+          ${row(items.some((p) => p.bestFor) ? "Best for" : "Highlight", items.map((p) => p.bestFor || (p.highlights || [])[0]))}
           ${specKeys(items).map((k) => row(k, items.map((p) => (p.specs || {})[k]), k === "Weight" ? (i) => weights[i] === lightest : undefined)).join("")}
         </tbody>
         <tfoot><tr><th scope="row"></th>${items.map((p) => `<td><button class="btn btn-brand btn-sm" data-action="quick" data-id="${p.id}">${isBike(p) ? "Choose size" : "View"}</button> <button class="link-btn muted" data-action="compare-remove" data-id="${p.id}" style="margin-left:8px">Remove</button></td>`).join("")}</tr></tfoot>
@@ -1499,7 +1663,7 @@
     const hits = D.products.map((p) => {
       const c = catOf(p.category) || {};
       const name = p.name.toLowerCase();
-      const hay = [p.name, c.label, c.singular, p.bestFor, p.description, Object.entries(p.specs || {}).map((e) => e.join(" ")).join(" "), p.fit ? Object.values(p.fit).join(" ") : ""].join(" ").toLowerCase();
+      const hay = [p.name, p.brand, p.model, p.year, c.label, c.singular, p.bestFor, p.description, (p.highlights || []).join(" "), (p.variants || []).map((v) => v.sku).join(" "), colorsOf(p).map((x) => x.name).join(" "), Object.entries(p.specs || {}).map((e) => e.join(" ")).join(" "), p.fit ? Object.values(p.fit).filter(Boolean).join(" ") : ""].join(" ").toLowerCase();
       if (!words.every((w) => hay.includes(w))) return null;
       if (budget != null && (!isBike(p) || p.price > budget * (1 + D.finder.stretch))) return null;
       const kind = `${c.label || ""} ${c.singular || ""}`.toLowerCase();
@@ -1561,10 +1725,7 @@
   function pickSize(el, size) {
     const sel = selOf(el), root = rootOf(el);
     sel.size = size;
-    $$(".size-btn", root).forEach((b) => { const on = b.dataset.s === size; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
-    const grid = $(".size-grid", root); if (grid) grid.classList.remove("need");
-    const picked = $(".size-picked", root); if (picked) picked.textContent = size || "";
-    const barBtn = $("#buyBarBtn"); if (barBtn && sel === PDP) barBtn.textContent = buyLabel();
+    refreshSelection(root, sel);
   }
 
   document.addEventListener("click", (e) => {
@@ -1615,11 +1776,17 @@
       }
 
       case "opt-color": {
-        const sel = selOf(el), root = rootOf(el);
+        const sel = selOf(el), root = rootOf(el), p = byId(sel.id);
         sel.color = +el.dataset.i;
-        (sel === QV ? $("#quickArt") : $("#pdpArt")).innerHTML = art(byId(sel.id), sel.color);
-        $$('[data-action="opt-color"]', root).forEach((s, k) => { s.classList.toggle("active", k === sel.color); s.setAttribute("aria-pressed", k === sel.color); });
-        const cp = $(".color-picked", root); if (cp) cp.textContent = colorName(byId(sel.id), sel.color);
+        autoSize(p, sel);
+        showColour(root, sel);
+        refreshSelection(root, sel);
+        break;
+      }
+      case "photo": {
+        const sel = selOf(el), p = byId(sel.id), u = photosOf(p, sel.color)[+el.dataset.i];
+        if (u) $("#pdpArt").innerHTML = `<img src="${esc(u)}" alt="${esc(p.name)}" decoding="async">`;
+        $$(".thumb", el.parentElement).forEach((b) => b.classList.toggle("on", b === el));
         break;
       }
       case "opt-size": pickSize(el, el.dataset.s); break;
@@ -1630,11 +1797,10 @@
       case "add-sel": {
         const sel = selOf(el), p = byId(sel.id);
         if (!p || soldOut(p)) break;
-        if (isBike(p) && !sel.size) {
+        if (needsSize(p, sel)) {
           const grid = $(".size-grid", rootOf(el));
-          grid.classList.remove("need"); void grid.offsetWidth; grid.classList.add("need");
-          grid.scrollIntoView({ behavior: "smooth", block: "center" });
-          toast("Choose a frame size first");
+          if (grid) { grid.classList.remove("need"); void grid.offsetWidth; grid.classList.add("need"); grid.scrollIntoView({ behavior: "smooth", block: "center" }); }
+          toast("Choose a size first");
           break;
         }
         addToCart(sel.id, sel.qty, { size: sel.size, color: sel.color, quiet: true });
@@ -1710,9 +1876,11 @@
       const h = +t.value, msg = $(".size-msg", rootOf(t));
       if (!h) { msg.textContent = ""; return; }
       if (h < 100) return; // still typing
-      const sizes = D.sizes;
+      const sizes = D.sizes, sel = selOf(t), p = byId(sel.id);
       const z = sizes.find((x) => h >= x.min && h < x.max) || (h === sizes[sizes.length - 1].max ? sizes[sizes.length - 1] : null);
-      if (z) { pickSize(t, z.s); msg.textContent = `Size ${z.s} fits ${h} cm`; }
+      const offered = sizeOptions(p, sel.color);
+      if (z && offered.includes(z.s)) { pickSize(t, z.s); msg.textContent = `Size ${z.s} fits ${h} cm`; }
+      else if (z) msg.textContent = `We'd suggest size ${z.s} for ${h} cm. Ask us about it.`;
       else msg.textContent = `Our sizes fit riders ${sizes[0].min}–${sizes[sizes.length - 1].max} cm`;
     }
   });
@@ -1758,13 +1926,14 @@
     lastFocus = null;
     shop = null;
     if (!a) viewHome();
-    else if ((a === "bikes" || a === "parts") && segs.length === 1) viewShop(a);
+    else if ((a === "bikes" || (a === "parts" && HAS_PARTS)) && segs.length === 1) viewShop(a);
     else if ((a === "bikes" || a === "parts") && segs.length === 2 && catOf(b) && catOf(b).type === a.slice(0, -1)) viewShop(b);
     else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
     else if (a === "bike-finder" && segs.length === 1) viewFinder();
     else if (a === "rewards" && segs.length === 1) viewRewards();
     else if (a === "how-to-order" && segs.length === 1) viewHowToOrder();
     else if (a === "products" && segs.length === 2 && bySlug(b)) viewProduct(bySlug(b).id);
+    else if (a === "products" && segs.length === 2 && skuIndex.has(b)) viewProduct(skuIndex.get(b).p.id, skuIndex.get(b).v);
     else viewNotFound();
     $$(".main-nav a[data-path]").forEach((l) => { if (a && l.dataset.path === a + "/") l.setAttribute("aria-current", "page"); else l.removeAttribute("aria-current"); });
     window.scrollTo(0, opts.y || 0);
@@ -1807,11 +1976,14 @@
     };
     $("#megaBikes").innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "bike").map(tile).join("")}
       <a class="mega-tile finder-tile" href="${url(PATHS.finder)}"><strong>Not sure which?</strong><span>Tell us your budget and we'll pick for you.</span></a></div>`;
-    $("#megaParts").innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "part").map(tile).join("")}</div>`;
+    const parts = $("#megaParts");
+    if (parts) parts.innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "part").map(tile).join("")}</div>`;
   }
 
   // Header and footer: draw icons, and point links at the right base address
   $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon, +el.dataset.size || 20); });
+  // No parts in the catalog yet: hide the Parts & Gear links
+  if (!HAS_PARTS) $$('[data-path="parts/"]').forEach((a) => (a.closest(".nav-item") || a).remove());
   $$("[data-path]").forEach((a) => a.setAttribute("href", url(a.dataset.path)));
   if (MODE === "path") { const lp = legacyHashPath(); if (lp !== null) history.replaceState(null, "", url(lp)); }
 
@@ -1827,17 +1999,19 @@
     window.__CC__ = {
       routes: [
         { path: PATHS.home, priority: "1.0" },
-        { path: PATHS.bikes, priority: "0.9" }, { path: PATHS.parts, priority: "0.9" },
+        { path: PATHS.bikes, priority: "0.9" }, ...(HAS_PARTS ? [{ path: PATHS.parts, priority: "0.9" }] : []),
         { path: PATHS.finder, priority: "0.9" },
         ...D.categories.map((c) => ({ path: PATHS.cat(c), priority: "0.8" })),
         { path: PATHS.sale, priority: "0.7" },
         ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7" })),
+        // One page per SKU (shared on Facebook); they point search engines at their model page
+        ...[...skuIndex.keys()].map((k) => ({ path: `products/${k}/`, variant: true })),
         { path: PATHS.order, priority: "0.6" },
         { path: PATHS.rewards, priority: "0.4" },
         { path: PATHS.favourites, noindex: true }
       ],
       brandArt: bikeSVG("#3c78c6", "road"),
-      products: D.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, price: peso(p.price), compareAt: onSale(p) ? peso(p.compareAt) : "", category: (catOf(p.category) || {}).singular || "", hasImage: !!p.image, art: art(p, 0, false) }))
+      products: D.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, price: (p.priceFrom ? "From " : "") + peso(p.price), compareAt: onSale(p) ? peso(p.compareAt) : "", category: (catOf(p.category) || {}).singular || "", hasImage: !!photoOf(p), art: art(p, 0, false) }))
     };
   }
 })();
