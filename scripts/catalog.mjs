@@ -30,7 +30,9 @@ export async function loadCatalog({ categories, env = process.env }) {
     source = `file ${env.CATALOG_FEED_FILE}`;
   } else if (env.CATALOG_FEED_KEY) {
     const base = env.CATALOG_FEED_URL || DEFAULT_FEED_URL;
-    raw = await fetchFeed(base, env.CATALOG_FEED_KEY);
+    // Secrets pasted with a trailing line break, spaces or quotes would never match
+    const key = String(env.CATALOG_FEED_KEY).trim().replace(/^(["'])(.*)\1$/s, "$2").trim();
+    raw = await fetchFeed(base, key);
     source = base;
   } else {
     return null;
@@ -48,7 +50,16 @@ async function fetchFeed(base, key) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(u, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(30000) });
-      if (res.status === 401 || res.status === 403) throw Object.assign(new Error(`Cycle Beast refused the feed key (HTTP ${res.status}) at ${shown}. Check the CATALOG_FEED_KEY secret.`), { final: true });
+      if (res.status === 401 || res.status === 403) {
+        // Show the start of the reply (never the key) so it's clear who refused: Cycle Beast, or Vercel's login wall
+        const body = (await res.text().catch(() => "")).replaceAll(key, "***");
+        const vercelWall = /vercel\.com\/(sso|login)|vercel authentication|_vercel_sso|deployment protection/i.test(body) || res.headers.get("set-cookie")?.includes("_vercel_sso");
+        const said = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+        const hint = vercelWall
+          ? "Vercel's Deployment Protection is blocking the request before it reaches Cycle Beast. Turn protection off for the production domain, or allow this path, in the Vercel project settings."
+          : "Check that the CATALOG_FEED_KEY secret on GitHub exactly matches CATALOG_FEED_KEY in Cycle Beast's Vercel environment variables, and that Cycle Beast was redeployed after the key was set.";
+        throw Object.assign(new Error(`Cycle Beast refused the feed key (HTTP ${res.status}) at ${shown} (key length ${key.length}). Reply: "${said || "(empty)"}". ${hint}`), { final: true });
+      }
       if (!res.ok) throw new Error(`Cycle Beast feed returned HTTP ${res.status} at ${shown}`);
       const text = await res.text();
       try { return JSON.parse(text); } catch { throw new Error(`Cycle Beast feed at ${shown} did not return JSON (starts with: ${text.slice(0, 60).replace(/\s+/g, " ")})`); }
