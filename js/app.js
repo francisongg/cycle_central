@@ -196,11 +196,15 @@
       .textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
   }
 
+  // The first paragraph of the description; a short one gets the type and key specs added
   function productDescription(p) {
-    if (p.description) return p.description.split(/\n\s*\n/)[0].replace(/\s+/g, " ").trim();
+    const first = p.description ? p.description.split(/\n\s*\n/)[0].replace(/\s+/g, " ").trim() : "";
+    if (first.length >= 90) return first;
     const cat = catOf(p.category);
-    const specs = p.specs ? " " + Object.entries(p.specs).map(([k, v]) => `${k}: ${v}`).join(", ") + "." : "";
-    return `${p.name}, ${(cat && (cat.singular || cat.label) || "").toLowerCase()} from ${D.site.name}.${specs}`;
+    const kind = ((cat && (cat.singular || cat.label)) || "").toLowerCase();
+    const what = p.frameset ? `${cat && cat.type === "bike" ? cat.label.toLowerCase() + " " : ""}frameset` : kind;
+    const specs = p.specs ? Object.entries(p.specs).slice(0, 5).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+    return [first, `${p.name}${what ? `, ${what}` : ""} from ${D.site.name}.`, specs && specs + "."].filter(Boolean).join(" ");
   }
 
   /* =======================================================
@@ -478,6 +482,7 @@
         <div class="card-actions">
           ${bike
             ? `<button class="btn btn-ghost" data-action="quick" data-id="${p.id}">${icon("eye", 16)}Quick view</button>${compareBtn(p)}`
+            : needsChoice(p) ? `<button class="btn btn-brand" data-action="quick" data-id="${p.id}">${sizeOptions(p, defaultColor(p)).length > 1 ? "Choose size" : "Choose colour"}</button>`
             : `<button class="btn btn-brand" data-action="add" data-id="${p.id}" ${soldOut(p) ? "disabled" : ""}>${soldOut(p) ? "Sold out" : "Add to cart"}</button>`}
         </div>
       </div>
@@ -767,7 +772,11 @@
     if (sel.size != null && !sizes.includes(sel.size)) sel.size = null;
     if (sel.size == null && hasVariants(p) && sizes.length === 1) sel.size = sizes[0];
   }
-  const needsSize = (p, sel) => isBike(p) && sel.size == null && sizeOptions(p, sel.color).length > 0;
+  const needsSize = (p, sel) => (isBike(p) || hasVariants(p)) && sel.size == null && sizeOptions(p, sel.color).length > 0;
+  // A part with more than one SKU (tire sizes, colours) is chosen in the quick view, not added straight from a card
+  const needsChoice = (p) => hasVariants(p) && p.variants.length > 1;
+  // Complete bikes only: framesets aren't suggested by the Bike Finder or as alternatives
+  const isComplete = (p) => isBike(p) && !p.frameset;
 
   function availHTML(p, sel) {
     if (!hasVariants(p)) return p.stock > 0 && p.stock <= 5 ? `<span class="stock-low">Only ${p.stock} left in stock</span>` : "";
@@ -782,7 +791,7 @@
 
   function optsInnerHTML(p, sel) {
     const cs = colorsOf(p), sizes = sizeOptions(p, sel.color);
-    const showSizes = isBike(p) && (sizes.length > 1 || (sizes.length === 1 && sizes[0] !== ""));
+    const showSizes = (isBike(p) || hasVariants(p)) && (sizes.length > 1 || (sizes.length === 1 && sizes[0] !== ""));
     const colourBlock = cs.length > 1
       ? `<div class="pdp-block"><h4>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h4><div class="swatches lg">${cs.map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>`
       : cs.length === 1 && hasVariants(p) && cs[0].name !== "Standard" ? `<p class="one-colour">Colour <b>${esc(cs[0].name)}</b></p>` : "";
@@ -830,7 +839,7 @@
   // The closest alternatives, for the side-by-side table on a bike's page
   function alternatives(p, count = 2) {
     const rank = (x) => (x.category === p.category ? 0 : x.fit && p.fit && x.fit.terrain === p.fit.terrain ? 1 : 2) * 10 + Math.abs(x.price - p.price) / p.price;
-    return D.products.filter((x) => isBike(x) && x.id !== p.id && !soldOut(x)).sort((a, b) => rank(a) - rank(b)).slice(0, count).sort((a, b) => a.price - b.price);
+    return D.products.filter((x) => isComplete(x) && x.id !== p.id && !soldOut(x)).sort((a, b) => rank(a) - rank(b)).slice(0, count).sort((a, b) => a.price - b.price);
   }
   function versusHTML(p) {
     const alts = alternatives(p);
@@ -937,7 +946,7 @@
     if (!p) return "";
     if (soldOut(p)) return "Sold out";
     if (needsSize(p, PDP)) return "Choose size";
-    return isBike(p) && PDP.size && sizeOptions(p, PDP.color).length > 1 ? `Add to cart · ${sizeLabel(PDP.size)}` : "Add to cart";
+    return (isBike(p) || hasVariants(p)) && PDP.size && sizeOptions(p, PDP.color).length > 1 ? `Add to cart · ${sizeLabel(PDP.size)}` : "Add to cart";
   }
   function setupBuyBar(p) {
     const bar = $("#buyBar");
@@ -1334,7 +1343,7 @@
   function finderRank(f = S.finder) {
     const near = { road: ["mixed", "city"], mixed: ["road", "trail"], trail: ["mixed"], city: ["road", "mixed"] };
     const order = ["beginner", "intermediate", "advanced"];
-    return D.products.filter((p) => isBike(p) && !soldOut(p))
+    return D.products.filter((p) => isComplete(p) && !soldOut(p))
       .filter((p) => (f.assist === "only" ? p.category === "electric" : f.assist === "none" ? p.category !== "electric" : true))
       .map((p) => {
         const fit = p.fit || {};
@@ -1398,7 +1407,7 @@
 
   function finderEmptyHTML(f, kind) {
     const t = terrainOf(f.terrain);
-    const cheapest = D.products.filter((p) => isBike(p) && !soldOut(p) && (!t || (p.fit && p.fit.terrain === t.v))
+    const cheapest = D.products.filter((p) => isComplete(p) && !soldOut(p) && (!t || (p.fit && p.fit.terrain === t.v))
       && (f.assist === "only" ? p.category === "electric" : f.assist === "none" ? p.category !== "electric" : true)).sort((a, b) => a.price - b.price)[0];
     if (!cheapest) return `<div class="empty"><h2>No bikes match yet</h2><p>Try a different riding type or include e-bikes.</p><button class="btn btn-brand" data-action="finder-reset">Start over</button></div>`;
     const need = Math.ceil(cheapest.price / D.finder.step) * D.finder.step;
@@ -1665,7 +1674,7 @@
       const name = p.name.toLowerCase();
       const hay = [p.name, p.brand, p.model, p.year, c.label, c.singular, p.bestFor, p.description, (p.highlights || []).join(" "), (p.variants || []).map((v) => v.sku).join(" "), colorsOf(p).map((x) => x.name).join(" "), Object.entries(p.specs || {}).map((e) => e.join(" ")).join(" "), p.fit ? Object.values(p.fit).filter(Boolean).join(" ") : ""].join(" ").toLowerCase();
       if (!words.every((w) => hay.includes(w))) return null;
-      if (budget != null && (!isBike(p) || p.price > budget * (1 + D.finder.stretch))) return null;
+      if (budget != null && (!isComplete(p) || p.price > budget * (1 + D.finder.stretch))) return null;
       const kind = `${c.label || ""} ${c.singular || ""}`.toLowerCase();
       return { p, score: words.reduce((s, w) => s + (name.startsWith(w) ? 3 : name.includes(w) ? 2 : 1) + (kind.includes(w) ? 3 : 0), 0) + (budget != null && p.price <= budget ? 1 : 0) };
     }).filter(Boolean).sort((a, b) => b.score - a.score || (budget != null ? b.p.price - a.p.price : 0)).slice(0, 8).map((x) => x.p);
@@ -1749,6 +1758,7 @@
 
       case "add":
         e.preventDefault();
+        if (needsChoice(byId(id))) { openQuick(id); break; }
         addToCart(id);
         if ($("#cartDrawer").classList.contains("open")) renderCart();
         break;

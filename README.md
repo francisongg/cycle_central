@@ -72,11 +72,18 @@ GET https://cycle-beast.vercel.app/api/feed/cycle-central?key=<CATALOG_FEED_KEY>
 - `availability`: in stock shows "In stock" (and "Only N left" when a quantity is given). **Anything not in stock is "Available to order", never sold out**, and can still be added to the cart. The order message tells the sales rep which SKUs are to order.
 - `photos` are used in this order: the colour's own photos, then the model's. They must be public `https://` addresses. A model with no photos shows a drawing.
 - `specs`, `description` (paragraphs separated by a blank line) and `highlights` (list, or one per line) show on the product page and in comparisons.
-- Bike type (road, gravel, mountain, city, folding, electric) comes from a `category` field if the feed has one; otherwise it's worked out from the model name, specs and description. The build log says how each bike was typed. **Adding `category` to the feed is the reliable fix** for any bike listed under "Other".
+- **What each product is** comes from a `category` field if the feed has one (for example `Road`, `Gravel`, `Mountain`, `City`, `Folding`, `E-bike`, `Tires`, `Components`, `Gear`). Without it, the importer works it out in this order:
+  1. **Parts**: brands that only make parts (Michelin, Continental, Shimano ...), part words in the name (tire, helmet, saddle ...), or tire specs (TPI, bead, casing). These go to **Parts & Gear**: tires and wheels under Wheels & Tires.
+  2. **E-bikes**: a real motor or e-bike battery in the specs (Bosch, Wh, Nm ...), or an e-bike name (Rail+, Moterra Neo). Electronic-shifting batteries (SRAM AXS, Shimano Di2) don't count.
+  3. **Known model families** in the name: Domane, Madone, SuperSix and Synapse are road; Checkpoint and Topstone are gravel; Marlin, Procaliber and Trail are mountain; FX, Verve and Quick are city.
+  4. Otherwise, the words used most in the name, description and highlights.
+
+  The build log says how each product was typed. **Adding `category` to the feed is the reliable fix** for anything listed under "Other" or in the wrong place.
+- Names with "Frameset" are listed with the bikes of their type, but the Bike Finder doesn't suggest them as complete bikes.
 - Only these fields are copied, so anything else in the feed never reaches the public site.
 - If the key is set but the feed can't be read (wrong key, Cycle Beast down, not JSON, no bikes), the build stops and the site that's already live stays up. The key is never printed.
 - Each run's summary on GitHub (Actions → the run) lists every imported model with its type, price, SKUs, stock and photo count, plus anything to check.
-- Parts and gear aren't in the feed yet, so when the feed is used, the Parts & Gear section is hidden.
+- Parts & Gear shows the parts found in the feed. When the feed has none, that section is hidden. A part sold in several sizes or colours (like a tire) is picked by size, the same way as a bike.
 
 Test the import locally with the sample feed: `CATALOG_FEED_FILE=scripts/fixtures/sample-feed.json npm run build`.
 

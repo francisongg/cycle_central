@@ -192,35 +192,107 @@ function sortSizes(sizes) {
   return [...sizes].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
-// Bike type for the site's categories. A `category` (or `type`) field in the feed wins;
-// otherwise it's worked out from the model name, specs and description.
-const TYPE_WORDS = [
-  ["electric", /\b(e-?bikes?|electric|e-?mtb|pedal[- ]assist|pedelec|motor)\b/],
-  ["folding", /\b(fold(ing|able)?|brompton)\b/],
-  ["gravel", /\b(gravel|all-?road|adventure road|cyclo-?cross|cx)\b/],
-  ["mountain", /\b(mountain|mtb|trail|enduro|cross-?country|xc|downhill|hardtail|full[- ]suspension)\b/],
-  ["road", /\b(road|race|racing|aero|endurance|criterium|crit)\b/],
-  ["city", /\b(city|urban|commut\w*|hybrid|comfort|cruiser|trekking|fitness)\b/]
+// ---------- What each model is ----------
+// A `category` (or `type`) field in the feed always wins. Otherwise, in this order:
+//  1. tires, tubes and other parts go to Parts & Gear (known parts brands, part names, tire specs)
+//  2. e-bikes: a real motor or e-bike battery in the specs, or an e-bike model name (Rail+, Moterra Neo ...)
+//  3. well-known model families (Domane is road, Marlin is mountain ...), from the name only
+//  4. otherwise the words in the name, description and highlights; most mentions wins
+const plain = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const count = (t, re) => (t.match(re) || []).length;
+
+// A feed category, in whatever words Cycle Beast uses
+const FEED_CATEGORY = [
+  ["wheels", /tire|tyre|tube|wheel|rim\b/], ["gear", /helmet|apparel|cloth|accessor|gear|light|computer|shoe|eyewear/],
+  ["components", /component|\bparts?\b|groupset|drivetrain|brake|cockpit|saddle|pedal/],
+  ["electric", /e-?bike|electric|e-?mtb|pedelec/], ["folding", /fold/], ["gravel", /gravel|cyclo|\bcx\b|all-?road/],
+  ["mountain", /mountain|mtb|trail|enduro|\bxc\b|downhill/], ["road", /road|race|aero|endurance|triathlon|\btt\b/],
+  ["city", /city|urban|hybrid|commut|comfort|cruiser|fitness|trekking/]
 ];
-// Model families whose type is well known, used only when nothing else says
+
+// Brands that make parts, not bikes
+const PART_BRANDS = [
+  ["wheels", /^(michelin|continental|schwalbe|maxxis|pirelli|vittoria|panaracer|kenda|hutchinson|challenge|goodyear|irc|tufo|cst|chaoyang|zipp|enve|dt swiss|mavic|fulcrum|hunt|roval|stan'?s( no ?tubes)?|orange seal)$/],
+  ["gear", /^(giro|kask|poc|met|abus|lazer|oakley|rudy project|rapha|castelli|assos|sportful|garmin|wahoo|hammerhead|bryton|igpsport|magicshine|lezyne|topeak|elite|tacx|camelbak|ortlieb|apidura|restrap)$/],
+  ["components", /^(shimano|sram|campagnolo|fsa|praxis|fizik|prologo|selle italia|selle smp|thomson|deda|crankbrothers|wolf tooth|kmc|fox|rockshox|ohlins|magura|hope|trp|tektro|chris king|ceramicspeed|absoluteblack)$/]
+];
+// Part words in a product's own name
+const PART_NAMES = [
+  ["wheels", /\b(tires?|tyres?|inner tubes?|tubes?|tubeless|clinchers?|tubulars?|wheelsets?|rims?|hubs?|sealant|rim tape)\b/],
+  ["gear", /\b(helmets?|shoes?|jerseys?|bibs?|jackets?|gloves?|socks|sunglasses|eyewear|lights?|bike computers?|gps|bottles?|bottle cages?|bags?|pumps?|locks?|multi-?tools?|bells?|racks?|fenders?|mudguards?|kickstands?|trainers?)\b/],
+  ["components", /\b(groupsets?|derailleurs?|cranksets?|cassettes?|chains?|chainrings?|brakes?|calipers?|rotors?|shifters?|handlebars?|stems?|saddles?|seat ?posts?|pedals?|headsets?|bottom brackets?|grips?|bar tape)\b/]
+];
+const TIRE_SPEC = /^(tpi|bead|casing|compound|etrto|tread( pattern)?|(max(imum)? )?(tire )?pressure|tubeless( ready)?|puncture protection|rubber)$/i;
+// Specs that only a bike (or a frameset) has
+const looksLikeBike = (specs) => !!specs.Frame && ["Fork", "Groupset", "Rear derailleur", "Shifters", "Gearing", "Suspension", "Brakes", "Wheels", "Tires", "Motor", "Headset"].some((k) => specs[k]);
+
+// E-bikes. Electronic shifting has a battery too (SRAM AXS, Shimano Di2), so a battery or motor
+// only counts when it's really an e-bike system.
+const NO_VALUE = /^(n\/?a|none|no|nil|null|-+|—|0|not applicable|not included)$/i;
+const SHIFT_POWER = /\b(axs|di2|e-?tap|eps|derailleurs?|shift\w*|wireless|coin|cr\d{4}|lights?|computer|radar)\b/i;
+const EBIKE_SYSTEM = /\b(\d{3,4}\s*wh|bosch|power ?tube|steps|ep\s?\d+|e\d{4}|fazua|tq|yamaha|brose|mahle|bafang|ananda|energypak|range extender|\d+\s*nm|\d{3}\s*w|watts?|hub motor|mid[- ]?drive|drive unit|pedal[- ]assist)\b/i;
+const realEbikeSpec = (v) => !!v && !NO_VALUE.test(v.trim()) && !SHIFT_POWER.test(v) && EBIKE_SYSTEM.test(v);
+const EBIKE_NAME = /[a-z]\+(?=\s|\d|$)|\be\+|\be-?(bike|mtb)s?\b|\bpowerfly\b|\bexe\b|\bturbo (levo|vado|creo|kenevo|como|tero)\b|\bmoterra\b|^cannondale\b.*\bneo\b/;
+
+// Model families whose type is well known (matched against the name only)
 const KNOWN_MODELS = [
-  ["gravel", /\b(revolt|devote|grail|checkpoint|topstone|diverge)\b/],
-  ["road", /\b(tcr|defy|propel|contend|avail|langma|envie|fuoco|tarmac|allez|emonda|domane|aeroad|ultimate|endurace)\b/],
-  ["mountain", /\b(talon|trance|reign|fathom|stance|anthem|tempt|marlin|rockhopper|stumpjumper|epic|spectral|neuron)\b/],
-  ["city", /\b(escape|roam|fastroad|sirrus|fx)\b/],
-  ["folding", /\bneo\b/]
+  ["gravel", /\b(revolt|devote|grail|grizl|checkpoint|checkmate|topstone|diverge|crux|aspero|silex|warbird|superx|super x|boone|crockett|g3x|g4x)\b/],
+  ["road", /\b(tcr|defy|propel|contend|avail|langma|envie|fuoco|tarmac|allez|aethos|roubaix|venge|emonda|domane|madone|speed concept|aeroad|ultimate|endurace|caad ?\d*|supersix|systemsix|synapse|lab71|c\d{2}|v\d ?rs|steelnovo|master|arabesque|dogma|addict|foil|caledonia|soloist|oltre|specialissima|scultura|reacto)\b/],
+  ["mountain", /\b(talon|trance|reign|fathom|stance|anthem|tempt|xtc|marlin|procaliber|supercaliber|fuel ex|top fuel|slash|remedy|session|roscoe|x-?caliber|820|habit|trail|scalpel|jekyll|f-?si|rockhopper|stumpjumper|epic|chisel|fuse|enduro|spectral|neuron|lux|grand canyon|exceed|spark|genius|ransom)\b/],
+  ["city", /\b(escape|roam|fastroad|sirrus|fx|verve|dual sport|district|allant|quick|treadwell|adventure|bad boy|townie|crossrip)\b/],
+  ["folding", /\b(brompton|dahon|tern|birdy|neo)\b/]
 ];
-function inferCategory(text, explicit, specs, ids) {
-  const has = (id) => ids.includes(id);
+// Words in the name, description and highlights; the type with the most mentions wins (ties go to the earlier one)
+const TYPE_WORDS = [
+  ["electric", /\b(e-?bikes?|e-?mtbs?|electric (bike|bicycle|mountain bike|road bike|gravel bike|hybrid|assist)s?|pedal[- ]assist\w*|pedelec)\b/g],
+  ["folding", /\b(folding (bike|bicycle|frame)s?|foldable|folds? (up|down|away|flat|in half|small|in seconds))\b/g],
+  ["gravel", /\b(gravel|all-?road|adventure (road|bike|riding)|cyclo-?cross|cx|bikepacking)\b/g],
+  ["mountain", /\b(mountain|mtb|trails?|singletrack|enduro|cross-?country|xc|downhill|hardtail|full[- ]suspension|dropper)\b/g],
+  ["road", /(?<![\w-])(road|race|racing|aero|endurance|criterium|crit|peloton|climbing)\b/g],
+  ["city", /\b(city|urban|commut\w*|hybrid|comfort|cruiser|trekking|fitness|errands)\b/g]
+];
+const FRAMESET = /\b(frame ?set|frame only|frame kit|frame and fork)\b/;
+
+// -> { type: "bike" | "part", id, how, frameset }
+function classify({ brand, name, description, highlights, specs, explicit }, categories) {
+  const typeOf = new Map(categories.map((c) => [c.id, c.type]));
+  const has = (id) => typeOf.has(id);
+  const out = (id, how) => ({ type: typeOf.get(id) === "part" ? "part" : "bike", id, how, frameset: typeOf.get(id) !== "part" && FRAMESET.test(nm) });
+  const nm = plain(name), br = plain(brand), prose = plain([description, ...highlights].join(" ")), specText = plain(Object.values(specs).join(" "));
+  const bikeSpecs = looksLikeBike(specs);
+
   if (explicit) {
-    const e = explicit.toLowerCase();
-    for (const [id, re] of TYPE_WORDS) if (has(id) && (e === id || re.test(e))) return { id, how: "feed category" };
-    if (has(e)) return { id: e, how: "feed category" };
+    const e = plain(explicit);
+    if (has(e)) return out(e, "feed category");
+    for (const [id, re] of FEED_CATEGORY) if (has(id) && re.test(e)) return out(id, "feed category");
   }
-  if (has("electric") && (specs.Motor || specs.Battery)) return { id: "electric", how: "motor in specs" };
-  for (const [id, re] of TYPE_WORDS) if (has(id) && re.test(text)) return { id, how: "description" };
-  for (const [id, re] of KNOWN_MODELS) if (has(id) && re.test(text)) return { id, how: "model name" };
-  return { id: has("other") ? "other" : ids[0], how: "not recognised" };
+  if (!bikeSpecs) {
+    for (const [id, re] of PART_BRANDS) if (has(id) && re.test(br)) return out(id, `${brand} makes parts`);
+    for (const [id, re] of PART_NAMES) if (has(id) && re.test(nm)) return out(id, "part name");
+    if (has("wheels") && Object.keys(specs).filter((k) => TIRE_SPEC.test(k)).length >= 2) return out("wheels", "tire specs");
+    const tires = count(prose, /\b(tires?|tyres?)\b/g);
+    if (has("wheels") && tires >= 3 && tires > count(prose, /\b(bikes?|bicycles?|frames?)\b/g)) return out("wheels", "tire description");
+  }
+  if (has("electric")) {
+    if (realEbikeSpec(specs.Motor) || realEbikeSpec(specs.Battery)) return out("electric", "motor in specs");
+    if (EBIKE_NAME.test(nm)) return out("electric", "e-bike name");
+  }
+  for (const [id, re] of KNOWN_MODELS) if (has(id) && re.test(nm)) return out(id, "model name");
+  let best = null;
+  for (const [id, re] of TYPE_WORDS) {
+    if (!has(id)) continue;
+    const score = count(nm, re) * 4 + count(prose, re) + count(specText, re) * 0.5;
+    if (score > 0 && (!best || score > best.score)) best = { id, score };
+  }
+  if (best) return out(best.id, "description");
+  const bikes = categories.filter((c) => c.type === "bike").map((c) => c.id);
+  return out(has("other") ? "other" : bikes[0], "not recognised");
+}
+// Drawing for a part without photos
+function partIcon(id, name) {
+  const n = plain(name);
+  for (const [icon, re] of [["tire", /tire|tyre|tube|michelin|continental|schwalbe|maxxis|pirelli|vittoria/], ["wheel", /wheel|rim|hub/], ["helmet", /helmet/], ["computer", /computer|gps/], ["light", /light/], ["bottle", /bottle|cage/], ["brake", /brake|rotor|caliper/], ["bar", /bar|stem|post|saddle/]]) if (re.test(n)) return icon;
+  return { wheels: "tire", gear: "helmet", components: "gear" }[id] || "gear";
 }
 const TERRAIN_FOR = { road: "road", gravel: "mixed", mountain: "trail", city: "city", folding: "city", electric: "city", other: null };
 
@@ -236,7 +308,6 @@ function skuPath(sku, warn) {
 export function normalize(rows, categories, origin) {
   const warnings = [];
   const warn = (m) => warnings.push(m);
-  const ids = categories.filter((c) => c.type === "bike").map((c) => c.id);
   const seenSku = new Set();
   const groups = new Map();
 
@@ -282,8 +353,7 @@ export function normalize(rows, categories, origin) {
     const description = (() => { const d = pick((r) => r.description); return Array.isArray(d) ? d.map(str).filter(Boolean).join("\n\n") : str(d); })();
     const highlights = normList(pick((r) => r.highlights) || []);
     const explicit = str(pick((r) => r.category ?? r.type ?? r.bikeType) || specs.Type || specs.Category || specs["Bike Type"] || "");
-    const text = [g.brand, g.model, description, highlights.join(" "), Object.values(specs).join(" ")].join(" ").toLowerCase();
-    const cat = inferCategory(text, explicit, specs, ids);
+    const cat = classify({ brand: g.brand, name, description, highlights, specs, explicit }, categories);
 
     // Colours keep the order they first appear in; each gets its own photos
     const colorNames = uniq(g.rows.map((x) => x.color));
@@ -305,18 +375,18 @@ export function normalize(rows, categories, origin) {
     const known = variants.filter((v) => v.inStock && v.qty != null);
     const photos = uniq(colors.flatMap((c) => c.photos));
     products.push({
-      id: "", slug: slugify(name), type: "bike", category: cat.id, name, brand: g.brand, model: g.model, year: g.year ?? undefined,
+      id: "", slug: slugify(name), type: cat.type, category: cat.id, frameset: cat.frameset || undefined, icon: cat.type === "part" ? partIcon(cat.id, name) : undefined, name, brand: g.brand, model: g.model, year: g.year ?? undefined,
       price: Math.min(...prices), priceFrom: new Set(prices).size > 1 || undefined, compareAt: cheapest.compareAt,
       description: description || undefined, highlights: highlights.length ? highlights : undefined,
       specs, photos, colors, sizes, variants,
       stock: known.length ? known.reduce((s, v) => s + v.qty, 0) : undefined,
       orderOnly: variants.every((v) => !v.inStock) || undefined,
-      fit: { terrain: TERRAIN_FOR[cat.id] ?? null, goal: null, level: null },
+      fit: cat.type === "bike" ? { terrain: TERRAIN_FOR[cat.id] ?? null, goal: null, level: null } : undefined,
       source: "cycle-beast"
     });
     if (cat.how === "not recognised") warn(`${name}: bike type not recognised, listed under "${cat.id}". Add a category to this bike in Cycle Beast to fix it.`);
     if (!photos.length) noPhotos.push(name);
-    summary.push({ name, category: cat.id, how: cat.how, price: Math.min(...prices), variants: variants.length, inStock: variants.filter((v) => v.inStock).length, photos: photos.length });
+    summary.push({ name, type: cat.type, category: cat.id + (cat.frameset ? " frameset" : ""), how: cat.how, price: Math.min(...prices), variants: variants.length, inStock: variants.filter((v) => v.inStock).length, photos: photos.length });
   }
 
   if (noPhotos.length) warn(`${noPhotos.length} model${noPhotos.length === 1 ? " has" : "s have"} no photos yet, so a drawing is shown: ${noPhotos.join(", ")}`);

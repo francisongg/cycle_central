@@ -45,6 +45,16 @@
     { "sku": "VOOK-V8EPRO", "brand": "VOOK", "model": "V8E PRO", "year": 2026, "color": "Matte Black", "size": "M", "price": 105550, "srp": 105550,
       "specs": { "Motor": "250 W rear hub", "Battery": "468 Wh", "Range": "Up to 80 km", "Frame": "Aluminium" }, "description": "", "highlights": ["Pedal assist with 5 levels"], "photos": [], "availability": "in_stock" },
 
+    { "sku": "MIC-PWRCUP-BLK-700X25", "brand": "Michelin", "model": "Power Cup Competition Line", "year": 2026, "color": "Black", "size": "700 x 25c", "price": 3950, "srp": 4200,
+      "specs": { "TPI": "3x120", "Bead": "Folding", "Weight": "225 g" }, "description": "A tubeless-ready road racing tire with a folding bead.", "highlights": ["Gum-X compound"], "photos": [], "availability": "in_stock" },
+    { "sku": "MIC-PWRCUP-BLK-700X28", "brand": "Michelin", "model": "Power Cup Competition Line", "year": 2026, "color": "Black", "size": "700 x 28c", "price": 3950, "srp": 4200,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "out_of_stock" },
+    { "sku": "MIC-PWRCUP-TAN-700X28", "brand": "Michelin", "model": "Power Cup Competition Line", "year": 2026, "color": "Classic Tan", "size": "700 x 28c", "price": 4150, "srp": 4400,
+      "specs": {}, "description": "", "highlights": [], "photos": [], "availability": "out_of_stock" },
+
+    { "sku": "COL-V5RS-FS-BLK-50S", "brand": "Colnago", "model": "V5Rs Frameset", "year": 2026, "color": "Black", "size": "50s", "price": 289000, "srp": 289000,
+      "specs": { "Frame": "Carbon", "Fork": "Carbon", "Headset": "Integrated" }, "description": "A race frameset.", "highlights": [], "photos": [], "availability": "out_of_stock" },
+
     { "sku": "GNT-REVOLT2-GRY-XS", "brand": "Giant", "model": "Revolt 2", "year": 2026, "color": "Gray", "size": "XS", "price": 52550, "srp": 52550, "availability": "in_stock" },
     { "sku": "MYSTERY-1", "brand": "Acme", "model": "Something", "year": 2026, "color": "Teal", "size": "", "price": "₱18,500.00", "srp": "18500", "availability": "reserved" }
   ]

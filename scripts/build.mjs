@@ -50,12 +50,14 @@ async function main() {
   const catalog = await loadCatalog({ categories: data.categories });
   if (catalog) {
     await write("js/catalog.js", `/* Bikes from Cycle Beast, ${new Date().toISOString()} */\nwindow.CC_CATALOG = ${JSON.stringify({ source: "Cycle Beast", fetchedAt: new Date().toISOString(), products: catalog.products })};\n`);
-    console.log(`Catalog: ${catalog.products.length} models, ${catalog.products.reduce((n, p) => n + p.variants.length, 0)} SKUs from Cycle Beast`);
-    for (const r of catalog.summary) console.log(`  ${r.name.padEnd(34)} ${r.category.padEnd(9)} ${String(r.variants).padStart(2)} SKU  ${String(r.inStock).padStart(2)} in stock  ${r.photos} photos  (type from ${r.how})`);
+    const bikeCount = catalog.products.filter((p) => p.type === "bike").length;
+    console.log(`Catalog: ${catalog.products.length} models (${bikeCount} bikes, ${catalog.products.length - bikeCount} part${catalog.products.length - bikeCount === 1 ? "" : "s"}), ${catalog.products.reduce((n, p) => n + p.variants.length, 0)} SKUs from Cycle Beast`);
+    const typeLabel = (r) => (r.type === "part" ? `part: ${r.category}` : r.category);
+    for (const r of catalog.summary) console.log(`  ${r.name.padEnd(34)} ${typeLabel(r).padEnd(15)} ${String(r.variants).padStart(2)} SKU  ${String(r.inStock).padStart(2)} in stock  ${r.photos} photos  (type from ${r.how})`);
     for (const w of catalog.warnings) console.log(`  ! ${w}`);
     if (process.env.GITHUB_STEP_SUMMARY) {
-      const rows = catalog.summary.map((r) => `| ${r.name} | ${r.category} (${r.how}) | ₱${r.price.toLocaleString("en-PH")} | ${r.variants} | ${r.inStock} | ${r.photos} |`).join("\n");
-      await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `## Bikes imported from Cycle Beast\n\n| Model | Type | From | SKUs | In stock | Photos |\n|---|---|---|---|---|---|\n${rows}\n\n${catalog.warnings.length ? "### Check these\n\n" + catalog.warnings.map((w) => `- ${w}`).join("\n") + "\n" : ""}`);
+      const rows = catalog.summary.map((r) => `| ${r.name} | ${typeLabel(r)} (${r.how}) | ₱${r.price.toLocaleString("en-PH")} | ${r.variants} | ${r.inStock} | ${r.photos} |`).join("\n");
+      await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `## Products imported from Cycle Beast\n\n| Model | Type | From | SKUs | In stock | Photos |\n|---|---|---|---|---|---|\n${rows}\n\n${catalog.warnings.length ? "### Check these\n\n" + catalog.warnings.map((w) => `- ${w}`).join("\n") + "\n" : ""}`);
     }
   } else {
     console.log("Catalog: CATALOG_FEED_KEY is not set, so the placeholder bikes in js/data.js are used.");
