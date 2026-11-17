@@ -1,7 +1,9 @@
 // Builds the public site into dist/:
 //  - one finished HTML file per page (so search engines see full content without running JavaScript)
-//  - sitemap.xml, robots.txt, 404.html, site.webmanifest
-//  - social share images (og/) and app icons
+//  - sitemap.xml (with photos, and lastmod dates that only change when a page changes),
+//    robots.txt, 404.html, site.webmanifest
+//  - resized product photos (img/p/) and social share images (og/), app icons
+//  - feeds/products.xml for Google Merchant Center, Bing and Facebook/Instagram shops
 //
 // Usage: npm run build
 // Env:   SITE_URL   public address, default from js/data.js (site.url)
@@ -16,9 +18,15 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { startServer } from "./serve.mjs";
 import { loadCatalog } from "./catalog.mjs";
+import { processPhotos } from "./images.mjs";
+import { productFeed } from "./feeds.mjs";
+import { INDEXNOW_KEY } from "./indexnow.mjs";
+import crypto from "node:crypto";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
+// Kept between builds (GitHub caches it): resized photos and each page's last-changed date
+const CACHE = path.join(ROOT, ".cache");
 
 const data = (() => {
   const ctx = { window: {} };
@@ -49,7 +57,10 @@ async function main() {
   // site that is already live stays up instead of being replaced.
   const catalog = await loadCatalog({ categories: data.categories });
   if (catalog) {
-    await write("js/catalog.js", `/* Bikes from Cycle Beast, ${new Date().toISOString()} */\nwindow.CC_CATALOG = ${JSON.stringify({ source: "Cycle Beast", fetchedAt: new Date().toISOString(), products: catalog.products })};\n`);
+    const { images, stats } = await processPhotos(catalog.products, { cacheDir: path.join(CACHE, "img"), distDir: DIST });
+    console.log(`Photos: ${stats.photos} (${stats.downloaded} downloaded, ${stats.cached} from cache${stats.failed.length ? `, ${stats.failed.length} failed` : ""})`);
+    if (stats.failed.length) catalog.warnings.push(`${stats.failed.length} photo${stats.failed.length === 1 ? "" : "s"} couldn't be downloaded, so the original address is used: ${stats.failed.slice(0, 10).join("; ")}`);
+    await write("js/catalog.js", `/* Bikes from Cycle Beast, ${new Date().toISOString()} */\nwindow.CC_CATALOG = ${JSON.stringify({ source: "Cycle Beast", fetchedAt: new Date().toISOString(), products: catalog.products, images })};\n`);
     const bikeCount = catalog.products.filter((p) => p.type === "bike").length;
     console.log(`Catalog: ${catalog.products.length} models (${bikeCount} bikes, ${catalog.products.length - bikeCount} part${catalog.products.length - bikeCount === 1 ? "" : "s"}), ${catalog.products.reduce((n, p) => n + p.variants.length, 0)} SKUs from Cycle Beast`);
     const typeLabel = (r) => (r.type === "part" ? `part: ${r.category}` : r.category);
@@ -67,9 +78,12 @@ async function main() {
   let template = await fs.readFile(path.join(ROOT, "index.html"), "utf8");
   template = template.replace(/(href|src)="(?!https?:|\/|#|data:|mailto:|tel:)([^"]*)"/g, (_, attr, val) =>
     `${attr}="${val === "./" ? BASE : BASE + val.replace(/^\.\//, "")}"`);
+  const verify = data.site.verification || {};
   template = template.replace('<meta charset="utf-8" />', `<meta charset="utf-8" />
   <meta name="cc-base" content="${BASE}" />
-  <meta name="cc-site" content="${SITE_URL}" />`);
+  <meta name="cc-site" content="${SITE_URL}" />${verify.google ? `
+  <meta name="google-site-verification" content="${esc(verify.google)}" />` : ""}${verify.bing ? `
+  <meta name="msvalidate.01" content="${esc(verify.bing)}" />` : ""}`);
   await write("index.html", template);
 
   await write("site.webmanifest", JSON.stringify({
@@ -172,14 +186,46 @@ async function main() {
   server.close();
 
   // Sitemap and robots.txt
-  // SKU pages point search engines at their model page, so only model pages go in the sitemap
+  // SKU pages point search engines at their model page, so only model pages go in the sitemap.
+  // lastmod is the day a page's content last changed (kept in .cache/seo-state.json), not the
+  // build date: search engines ignore lastmod on sites where it changes every hour.
   const indexable = report.filter((r) => !r.noindex && !r.variant);
+  const stateFile = path.join(CACHE, "seo-state.json");
+  let prev = null;
+  try { prev = JSON.parse(await fs.readFile(stateFile, "utf8")); } catch { /* first build */ }
+  if (prev && prev.site !== SITE_URL + BASE) prev = null;
+  const pagesBefore = (prev && prev.pages) || {};
+  const pagesNow = {};
+  const changed = [];
+  for (const r of indexable) {
+    const h = r.html;
+    const main = h.slice(h.indexOf("<main"), h.indexOf("</main>"));
+    const head = [/<title>[\s\S]*?<\/title>/, /<meta name="description"[^>]*>/, /<script type="application\/ld\+json"[\s\S]*?<\/script>/].map((re) => (h.match(re) || [""])[0]).join("");
+    const hash = crypto.createHash("sha1").update(head + main).digest("hex");
+    const old = pagesBefore[r.path];
+    pagesNow[r.path] = { hash, lastmod: old && old.hash === hash ? old.lastmod : today };
+    if (!old || old.hash !== hash) changed.push(r.path);
+  }
+  const removed = Object.keys(pagesBefore).filter((k) => !pagesNow[k]);
+  await fs.mkdir(CACHE, { recursive: true });
+  await fs.writeFile(stateFile, JSON.stringify({ site: SITE_URL + BASE, pages: pagesNow }));
+  const abs = (rel) => (/^https?:/.test(rel) ? rel : `${SITE_URL}${BASE}${rel.replace(/^\.?\//, "")}`);
+  await fs.writeFile(path.join(CACHE, "indexnow.json"), JSON.stringify({ host: new URL(SITE_URL).host, urls: [...changed, ...removed].map(abs) }));
+  const xmlEsc = (t) => String(t).replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]));
   await write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${indexable.map((r) => `  <url><loc>${SITE_URL}${BASE}${r.path}</loc><lastmod>${today}</lastmod><priority>${r.priority}</priority></url>`).join("\n")}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${indexable.map((r) => `  <url><loc>${xmlEsc(abs(r.path))}</loc><lastmod>${pagesNow[r.path].lastmod}</lastmod>${(r.images || []).map((u) => `<image:image><image:loc>${xmlEsc(abs(u))}</image:loc></image:image>`).join("")}</url>`).join("\n")}
 </urlset>
 `);
-  await write("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}${BASE}sitemap.xml\n`);
+  await write("robots.txt", `# ${data.site.name}: every page may be crawled\nUser-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}${BASE}sitemap.xml\n`);
+  // IndexNow key file (see scripts/indexnow.mjs)
+  await write(`${INDEXNOW_KEY}.txt`, INDEXNOW_KEY);
+  // Shopping feed for Google Merchant Center, Bing and Facebook/Instagram shops
+  if (catalog) {
+    const feed = productFeed(catalog.products, { site: data.site, abs, categories: data.categories, policies: data.policies || {} });
+    await write("feeds/products.xml", feed.xml);
+    console.log(`Feed: ${feed.count} SKUs in feeds/products.xml`);
+  }
 
   // Basic checks so a broken page never ships
   const problems = [];
@@ -198,10 +244,11 @@ ${indexable.map((r) => `  <url><loc>${SITE_URL}${BASE}${r.path}</loc><lastmod>${
       if (titles.has(title)) problems.push(`${r.path || "/"}: same title as ${titles.get(title) || "/"}`);
       titles.set(title, r.path);
     }
+    if (/src="https?:\/\/127\.0\.0\.1/.test(h)) problems.push(`${r.path || "/"}: links to the build's local server`);
   }
   if (problems.length) throw new Error("SEO checks failed:\n  " + problems.join("\n  "));
 
-  console.log(`Done: ${report.length} pages (${report.filter((r) => r.variant).length} SKU pages), ${indexable.length} in sitemap, ${products.filter((p) => !p.hasImage).length} product images.`);
+  console.log(`Done: ${report.length} pages (${report.filter((r) => r.variant).length} SKU pages), ${indexable.length} in sitemap (${changed.length} new or changed${prev ? "" : ", first build"}${removed.length ? `, ${removed.length} removed` : ""}), ${products.filter((p) => !p.hasImage).length} drawn share images.`);
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

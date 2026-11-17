@@ -17,6 +17,12 @@
   const byId = (id) => D.products.find((p) => p.id === id);
   const catOf = (id) => D.categories.find((c) => c.id === id);
   const isBike = (p) => p.type === "bike";
+  // Complete bikes only: framesets aren't suggested by the Bike Finder, as alternatives or on budget pages
+  const isComplete = (p) => isBike(p) && !p.frameset;
+  // Photo sizes made by the build (js/catalog.js): { "img/p/x-960.webp": { w, h, set: [[480, path], ...] } }
+  const IMG = (CATALOG && CATALOG.images) || {};
+  const POL = D.policies || {};
+  const YEAR = new Date().getFullYear();
   const lcFirst = (t) => t.charAt(0).toLowerCase() + t.slice(1);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -44,9 +50,41 @@
   const skuIndex = new Map();
   D.products.forEach((p) => (p.variants || []).forEach((v) => { if (v.path && v.path !== p.slug) skuIndex.set(v.path, { p, v }); }));
 
+  // Brand pages (/brands/trek/): every brand, most models first
+  const BRANDS = (() => {
+    const m = new Map();
+    D.products.forEach((p) => {
+      if (!p.brand) return;
+      const k = slugify(p.brand);
+      if (!m.has(k)) m.set(k, { name: p.brand, slug: k, items: [] });
+      m.get(k).items.push(p);
+    });
+    return [...m.values()].sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name));
+  })();
+  const brandOf = (slug) => BRANDS.find((b) => b.slug === slug);
+  const brandFor = (p) => (p.brand ? brandOf(slugify(p.brand)) : null);
+  // Budget pages (/bikes/under-50k/): each limit with at least 3 complete bikes, more than the
+  // limit below it, and fewer than all bikes (so no page repeats another)
+  const BUDGETS = (() => {
+    const complete = D.products.filter(isComplete);
+    const out = [];
+    let prev = 0;
+    for (const k of [20, 30, 40, 50, 75, 100, 150, 200, 300, 500]) {
+      const n = complete.filter((p) => p.price <= k * 1000).length;
+      if (n >= 3 && n > prev && n < complete.length) { out.push({ k, max: k * 1000, slug: `under-${k}k`, count: n }); prev = n; }
+    }
+    return out;
+  })();
+  const budgetOf = (slug) => BUDGETS.find((b) => b.slug === slug);
+  const budgetFor = (price) => BUDGETS.find((b) => b.max >= price);
+  const HAS_FRAMESETS = D.products.filter((p) => p.frameset).length >= 2;
+
   const PATHS = {
     home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/", finder: "bike-finder/", order: "how-to-order/",
+    brands: "brands/", framesets: "bikes/framesets/", about: "about/", sizeGuide: "guides/bike-size-guide/", chooseGuide: "guides/how-to-choose-a-bike/",
     cat: (c) => `${c.type === "bike" ? "bikes" : "parts"}/${c.id}/`,
+    brand: (b) => `brands/${b.slug}/`,
+    budget: (b) => `bikes/${b.slug}/`,
     product: (p) => `products/${p.slug}/`
   };
   const shopPath = (scope) => { const c = catOf(scope); return c ? PATHS.cat(c) : (PATHS[scope] ?? PATHS.bikes); };
@@ -93,7 +131,18 @@
      ======================================================= */
   const clip = (t, n = 158) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n - 1)).replace(/[,.;:]$/, "") + "…");
   const DEFAULT_IMAGE = "assets/og-image.png";
-  const productImage = (p, ci = 0) => { const ph = photoOf(p, ci); return ph ? absAsset(ph) : absUrl(`og/products/${p.slug}.png`); };
+  const SCHEMA = "https://schema.org/";
+  const ORG_ID = () => SITE + BASE + "#organization";
+  // Largest copy of a photo, as a full address (for Google and share previews)
+  const bigPhoto = (src) => { const m = IMG[src]; return absAsset(m ? m.set[m.set.length - 1][1] : src); };
+  // Share image: the build makes a 1200x630 picture per colour from its photo, or draws one
+  function productImage(p, ci = 0) {
+    const c = (p.colors || [])[ci];
+    const og = (c && typeof c === "object" && c.og) || p.og;
+    if (og) return absUrl(og);
+    const ph = photoOf(p, ci);
+    return ph ? bigPhoto(ph) : absUrl(`og/products/${p.slug}.png`);
+  }
   // Out-of-stock bikes from Cycle Beast can still be ordered: "back order", never sold out
   function availabilityOf(p, v) {
     if (v) return v.inStock ? "InStock" : "BackOrder";
@@ -102,10 +151,102 @@
   }
   const OG_AVAIL = { InStock: "in stock", BackOrder: "available for order", OutOfStock: "out of stock" };
 
+  // Page titles: "<title> | Cycle Central" when it fits in Google's ~65 characters, otherwise just the title
+  const fullTitle = (t) => (t.length + D.site.name.length + 3 <= 65 ? `${t} | ${D.site.name}` : t);
+  const andList = (list) => (list.length > 1 ? `${list.slice(0, -1).join(", ")} & ${list[list.length - 1]}` : list[0] || "");
+  // Home page title names the main bike brands: "Cycle Central | Trek, Cannondale & Colnago Bikes Philippines"
+  function homeTitle() {
+    const names = BRANDS.filter((b) => b.items.some(isBike)).slice(0, 3).map((b) => b.name);
+    for (let k = names.length; k >= 2; k--) {
+      for (const tail of [" Bikes in the Philippines", " Bikes Philippines"]) {
+        const t = `${D.site.name} | ${andList(names.slice(0, k))}${tail}`;
+        if (t.length <= 65) return t;
+      }
+    }
+    return `${D.site.name} | ${D.site.tagline}`;
+  }
+
+  // Store policies for Google, only when they're filled in (js/data.js, policies)
+  function returnPolicyLD() {
+    if (POL.returnDays == null || POL.returnDays === "") return null;
+    if (+POL.returnDays === 0) return { "@type": "MerchantReturnPolicy", applicableCountry: "PH", returnPolicyCategory: SCHEMA + "MerchantReturnNotPermitted" };
+    return {
+      "@type": "MerchantReturnPolicy", applicableCountry: "PH", returnPolicyCategory: SCHEMA + "MerchantReturnFiniteReturnWindow",
+      merchantReturnDays: +POL.returnDays, returnMethod: SCHEMA + "ReturnByMail",
+      returnFees: SCHEMA + (POL.returnFees === "free" ? "FreeReturn" : "ReturnFeesCustomerResponsibility")
+    };
+  }
+  function shippingLD(price) {
+    const d = POL.deliveryDays;
+    if (!Array.isArray(d) || d.length !== 2) return null;
+    const days = (a, b) => ({ "@type": "QuantitativeValue", minValue: a, maxValue: b, unitCode: "DAY" });
+    return {
+      "@type": "OfferShippingDetails",
+      shippingRate: { "@type": "MonetaryAmount", value: price >= D.freeShippingThreshold ? 0 : D.shippingFee, currency: D.site.currency },
+      shippingDestination: { "@type": "DefinedRegion", addressCountry: "PH" },
+      deliveryTime: { "@type": "ShippingDeliveryTime", handlingTime: days(0, 0), transitTime: days(+d[0], +d[1]) }
+    };
+  }
+  function offerLD(p, v, pageUrl) {
+    const src = v || p;
+    const o = {
+      "@type": "Offer", url: pageUrl, priceCurrency: D.site.currency, price: src.price,
+      availability: SCHEMA + availabilityOf(p, v), itemCondition: SCHEMA + "NewCondition", seller: { "@id": ORG_ID() }
+    };
+    if (v) o.sku = v.sku;
+    if (src.compareAt && src.compareAt > src.price) {
+      o.priceSpecification = [
+        { "@type": "UnitPriceSpecification", price: src.price, priceCurrency: D.site.currency },
+        { "@type": "UnitPriceSpecification", priceType: SCHEMA + "StrikethroughPrice", price: src.compareAt, priceCurrency: D.site.currency }
+      ];
+    }
+    const ship = shippingLD(src.price);
+    if (ship) o.shippingDetails = ship;
+    return o;
+  }
+  // A model with several SKUs is a ProductGroup: one variant per SKU, each with its own page and offer
+  function productLD(p, canonical) {
+    const cat = catOf(p.category);
+    const variants = p.variants || [];
+    const images = (ci, n = 4) => { const ph = photosOf(p, ci); return ph.length ? ph.slice(0, n).map(bigPhoto) : [productImage(p, ci)]; };
+    const shownColour = (ci) => { const n = colorName(p, ci); return n && n !== "Standard" ? n : undefined; };
+    const base = {
+      name: p.name, description: productDescription(p),
+      brand: p.brand ? { "@type": "Brand", name: p.brand } : undefined,
+      category: cat ? (p.frameset ? `${cat.label} frameset` : cat.singular || cat.label) : undefined
+    };
+    if (variants.length > 1) {
+      const colours = new Set(variants.map((x) => x.color)).size > 1, sizes = new Set(variants.map((x) => x.size)).size > 1;
+      return {
+        "@type": "ProductGroup", "@id": canonical + "#product", ...base, url: canonical, productGroupID: p.slug, image: images(defaultColor(p)),
+        variesBy: [colours && SCHEMA + "color", sizes && SCHEMA + "size"].filter(Boolean),
+        hasVariant: variants.map((x) => {
+          const vu = absUrl(`products/${x.path}/`);
+          const label = [colours ? shownColour(x.color) : "", x.size].filter(Boolean).join(", ");
+          return {
+            "@type": "Product", name: label ? `${p.name} – ${label}` : p.name, sku: x.sku,
+            color: shownColour(x.color), size: x.size || undefined, image: images(x.color, 2), url: vu, offers: offerLD(p, x, vu)
+          };
+        })
+      };
+    }
+    const v = variants[0] || null;
+    return {
+      "@type": "Product", "@id": canonical + "#product", ...base, sku: v ? v.sku : p.id,
+      color: v ? shownColour(v.color) : undefined, size: v && v.size ? v.size : undefined,
+      image: images(v ? v.color : 0), url: canonical, offers: offerLD(p, v, canonical)
+    };
+  }
+  const faqLD = (items) => ({ "@type": "FAQPage", mainEntity: items.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.text || f.a } })) });
+  const listLD = (name, items) => ({
+    "@type": "CollectionPage", name, url: absUrl(currentPath()), isPartOf: { "@id": SITE + BASE + "#website" },
+    mainEntity: { "@type": "ItemList", numberOfItems: items.length, itemListElement: items.slice(0, 60).map((p, i) => ({ "@type": "ListItem", position: i + 1, url: absUrl(PATHS.product(p)), name: p.name })) }
+  });
+
   // canonicalPath: a SKU page names its model page as the main version for search engines,
   // while its own address stays the share link (og:url) so Facebook posts keep the colour and size
-  function setMeta({ title, description, image, imageAlt, type = "website", noindex = false, crumbs = [], product = null, variant = null, canonicalPath = null }) {
-    document.title = title ? `${title} | ${D.site.name}` : `${D.site.name} | ${D.site.tagline}`;
+  function setMeta({ title, description, image, imageAlt, type = "website", noindex = false, crumbs = [], product = null, variant = null, canonicalPath = null, schema = [] }) {
+    document.title = title ? fullTitle(title) : homeTitle();
     if (MODE === "hash") return; // the preview build has no public address to describe
     const head = document.head;
     const find = (sel, make) => { let el = head.querySelector(sel); if (!el) { el = make(); head.appendChild(el); } return el; };
@@ -115,9 +256,9 @@
     const path = currentPath();
     const canonical = absUrl(canonicalPath ?? path);
     const img = image || absAsset(DEFAULT_IMAGE);
-    const desc = clip(description || D.site.description);
+    const desc = clip(description || D.site.description, 160);
     named("description", desc);
-    named("robots", noindex ? "noindex, follow" : "index, follow, max-image-preview:large");
+    named("robots", noindex ? "noindex, follow" : "index, follow, max-image-preview:large, max-snippet:-1");
     find('link[rel="canonical"]', () => { const l = document.createElement("link"); l.rel = "canonical"; return l; }).href = canonical;
     prop("og:site_name", D.site.name);
     prop("og:locale", D.site.locale);
@@ -138,19 +279,27 @@
       prop("product:price:amount", String(variant ? variant.price : product.price));
       prop("product:price:currency", D.site.currency);
       prop("product:availability", OG_AVAIL[availabilityOf(product, variant)]);
+      prop("product:condition", "new");
+      if (product.brand) prop("product:brand", product.brand);
       if (variant) prop("product:retailer_item_id", variant.sku);
     }
 
     // Structured data for Google (schema.org)
+    const C0 = D.contact || {};
+    const tel = (C0.phone || C0.viber || "").replace(/[^\d+]/g, "");
     const org = {
-      "@type": "OnlineStore", "@id": SITE + BASE + "#organization", name: D.site.name, url: absUrl(),
+      "@type": "OnlineStore", "@id": ORG_ID(), name: D.site.name, alternateName: D.site.alternateName || undefined, url: absUrl(),
       logo: { "@type": "ImageObject", url: absAsset("assets/logo-512.png"), width: 512, height: 512 },
-      description: D.site.description
+      image: absAsset(DEFAULT_IMAGE), description: D.site.description,
+      areaServed: { "@type": "Country", name: "Philippines" },
+      sameAs: (D.site.social || []).length ? D.site.social : undefined,
+      email: C0.email || undefined, telephone: tel || undefined
     };
-    const tel = (D.contact || {}).phone || (D.contact || {}).viber;
-    if (tel) org.contactPoint = { "@type": "ContactPoint", telephone: tel.replace(/[^\d+]/g, ""), contactType: "sales", areaServed: "PH" };
+    if (tel || C0.email) org.contactPoint = { "@type": "ContactPoint", contactType: "sales", telephone: tel || undefined, email: C0.email || undefined, areaServed: "PH", availableLanguage: ["English", "Filipino"] };
+    const rp = returnPolicyLD();
+    if (rp) org.hasMerchantReturnPolicy = rp;
     const graph = [org, {
-      "@type": "WebSite", "@id": SITE + BASE + "#website", name: D.site.name, url: absUrl(),
+      "@type": "WebSite", "@id": SITE + BASE + "#website", name: D.site.name, alternateName: D.site.alternateName || undefined, url: absUrl(),
       inLanguage: D.site.language, publisher: { "@id": org["@id"] }
     }];
     if (crumbs.length) {
@@ -159,39 +308,8 @@
         itemListElement: [{ name: "Home", path: "" }, ...crumbs].map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: absUrl(c.path) }))
       });
     }
-    if (product) {
-      const p = product, cat = catOf(p.category), v = variant;
-      const variants = p.variants || [];
-      const single = v || (variants.length === 1 ? variants[0] : null);
-      const schemaAvail = (a) => "https://schema.org/" + a;
-      let offer;
-      if (!single && variants.length > 1) {
-        const prices = variants.map((x) => x.price);
-        offer = { "@type": "AggregateOffer", priceCurrency: D.site.currency, lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: variants.length, availability: schemaAvail(availabilityOf(p)), seller: { "@id": org["@id"] } };
-      } else {
-        const src = single || p;
-        offer = {
-          "@type": "Offer", url: absUrl(path), priceCurrency: D.site.currency, price: src.price,
-          availability: schemaAvail(availabilityOf(p, single)), // stock left blank = in stock
-          itemCondition: "https://schema.org/NewCondition", seller: { "@id": org["@id"] }
-        };
-        if (single) offer.sku = single.sku;
-        if (src.compareAt && src.compareAt > src.price) {
-          offer.priceSpecification = [
-            { "@type": "UnitPriceSpecification", price: src.price, priceCurrency: D.site.currency },
-            { "@type": "UnitPriceSpecification", priceType: "https://schema.org/StrikethroughPrice", price: src.compareAt, priceCurrency: D.site.currency }
-          ];
-        }
-      }
-      const ci = v ? v.color : 0;
-      graph.push({
-        "@type": "Product", "@id": canonical + "#product", name: p.name, description: productDescription(p),
-        sku: single ? single.sku : p.variants ? undefined : p.id, brand: p.brand ? { "@type": "Brand", name: p.brand } : undefined,
-        color: v && colorsOf(p).length > 1 ? colorName(p, ci) : undefined, size: v && v.size ? v.size : undefined,
-        image: photosOf(p, ci).length ? photosOf(p, ci).slice(0, 4).map(absAsset) : [productImage(p, ci)],
-        category: cat ? cat.singular || cat.label : undefined, url: canonical, offers: offer
-      });
-    }
+    if (product) graph.push(productLD(product, canonical));
+    graph.push(...schema.filter(Boolean));
     find("#ld-json", () => { const sc = document.createElement("script"); sc.type = "application/ld+json"; sc.id = "ld-json"; return sc; })
       .textContent = JSON.stringify({ "@context": "https://schema.org", "@graph": graph });
   }
@@ -382,9 +500,25 @@
   }
   const shortSpec = (v) => v.replace(/^Up to /, "").replace(/ speed$/, "").replace(/,.*$/, "");
 
-  function art(p, colorIdx = 0, label = true) {
+  // Image sizes the browser picks from, per place a photo is shown
+  const SIZES = {
+    card: "(max-width: 640px) 50vw, (max-width: 1100px) 33vw, 300px",
+    hero: "(max-width: 900px) 100vw, 640px",
+    quick: "(max-width: 900px) 100vw, 480px",
+    tile: "180px",
+    thumb: "120px"
+  };
+  const assetUrl = (src) => (/^(https?:|data:)/.test(src) ? src : BASE + src.replace(/^\.?\//, ""));
+  // <img> for a product photo. Photos the build has resized get srcset, width and height (no layout shift);
+  // the main photo on a product page loads first (fetchpriority), everything else lazily
+  function photoTag(src, alt, { sizes = SIZES.card, eager = false } = {}) {
+    const m = IMG[src];
+    const set = m ? ` srcset="${m.set.map(([w, u]) => `${esc(assetUrl(u))} ${w}w`).join(", ")}" sizes="${sizes}" width="${m.w}" height="${m.h}"` : "";
+    return `<img src="${esc(assetUrl(src))}"${set} alt="${esc(alt)}" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async">`;
+  }
+  function art(p, colorIdx = 0, label = true, opts = {}) {
     const ph = photoOf(p, colorIdx);
-    if (ph) return `<img src="${esc(ph)}" alt="${label ? esc(p.name + (colorsOf(p).length > 1 ? `, ${colorName(p, colorIdx)}` : "")) : ""}" loading="lazy" decoding="async">`;
+    if (ph) return photoTag(ph, label ? p.name + (colorsOf(p).length > 1 ? `, ${colorName(p, colorIdx)}` : "") : "", opts);
     if (!isBike(p)) return partSVG(p.icon, "#3c78c6", label ? p.name : "");
     const s = p.specs || {};
     return bikeSVG(colorHex(p, colorIdx), p.category === "other" ? "city" : p.category, {
@@ -467,7 +601,7 @@
     const bike = isBike(p);
     return `<article class="card ${o.label ? "pick" : ""} ${o.best ? "best" : ""}" data-id="${p.id}">
       ${o.label ? `<div class="pick-label">${o.best ? icon("check", 16) : ""}${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ""}</div>` : ""}
-      <a class="card-media" href="${href}" tabindex="-1" aria-hidden="true">${tagsHTML(p)}<span class="art">${art(p, 0, false)}</span></a>
+      <a class="card-media" href="${href}" tabindex="-1" aria-hidden="true">${tagsHTML(p)}<span class="art">${art(p, 0, false, { eager: !!o.eager })}</span></a>
       ${favBtn(p)}
       <div class="card-body">
         <span class="card-meta">${metaHTML(p)}</span>
@@ -495,6 +629,165 @@
   const app = $("#app");
   const crumbsHTML = (items, style = "") => `<nav class="crumbs" aria-label="Breadcrumb" ${style ? `style="${style}"` : ""}><a href="${url()}">Home</a>${items.map((c, i) => (i === items.length - 1 ? ` / <span aria-current="page">${esc(c.name)}</span>` : ` / <a href="${url(c.path)}">${esc(c.name)}</a>`)).join("")}</nav>`;
 
+  /* ---------- Content for search: price lists, answers to common questions, links ---------- */
+  const ucFirst = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const stripTags = (h) => h.replace(/<[^>]+>/g, "");
+  const LETTER_SIZES = ["XXS", "XS", "S", "SM", "S/M", "M", "ML", "M/L", "L", "XL", "XXL"];
+  const inStockAny = (p) => (hasVariants(p) ? p.variants.some((v) => v.inStock) : !soldOut(p));
+  const stockLabel = (p) => (hasVariants(p) ? (inStockAny(p) ? "In stock" : "Available to order") : soldOut(p) ? "Sold out" : "In stock");
+  const priceText = (p) => `${p.priceFrom ? "from " : ""}${peso(p.price)}`;
+  const kindOf = (p) => {
+    const c = catOf(p.category);
+    if (p.frameset) return `${c && c.type === "bike" && c.id !== "other" ? c.label.toLowerCase() + " " : ""}frameset`;
+    return ((c && (c.singular || c.label)) || "").toLowerCase();
+  };
+  function sizesText(p) {
+    const sz = (p.sizes || []).filter(Boolean);
+    if (!sz.length) return "";
+    if (sz.length === 1) return `size ${sz[0]}`;
+    if (sz.length > 2 && sz.every((z) => LETTER_SIZES.includes(z.toUpperCase()))) return `sizes ${sz[0]}–${sz[sz.length - 1]}`;
+    return sz.length <= 4 ? `sizes ${andList(sz)}` : `${sz.length} sizes`;
+  }
+  // "bike"/"bikes", "tire"/"tires" or "product"/"products", for headings and answers
+  function nounFor(items) {
+    if (items.every(isBike)) return items.every((p) => p.frameset) ? { one: "frameset", many: "framesets" } : { one: "bike", many: "bikes" };
+    if (items.every((p) => p.icon === "tire")) return { one: "tire", many: "tires" };
+    return { one: "product", many: "products" };
+  }
+  const cheapestOf = (items) => [...items].sort((a, b) => a.price - b.price)[0];
+  const dearestOf = (items) => [...items].sort((a, b) => b.price - a.price)[0];
+  const named = (p) => `${p.name} (${priceText(p)})`;
+  const ORDER_A = "Choose your size and colour, add it to your cart and send your order request by chat. A sales rep confirms stock, the final price, delivery and payment with you. No online payment is needed.";
+  const orderFaq = (q = "How do I order?") => ({ q, a: ORDER_A, html: `${esc(ORDER_A)} <a href="${url(PATHS.order)}">How ordering works</a>.` });
+  const sizeFaq = () => {
+    const a = "Most brands size their bikes by rider height. Enter your height on any bike's page to see the size we suggest, or check our bike size guide. A sales rep double-checks your size before you pay.";
+    return { q: "Which frame size do I need?", a, html: esc(a).replace("bike size guide", `<a href="${url(PATHS.sizeGuide)}">bike size guide</a>`) };
+  };
+  function stockFaq(items, noun, q) {
+    const inStock = items.filter(inStockAny);
+    const a = !inStock.length
+      ? `All of them are available to order. Send your order request and we'll confirm stock and the delivery time with you.`
+      : inStock.length === items.length ? `All ${items.length} are in stock.`
+      : `In stock now: ${andList(inStock.slice(0, 6).map((p) => p.name))}${inStock.length > 6 ? ` and ${inStock.length - 6} more` : ""}. The other ${noun.many} are available to order; we confirm the delivery time when you send your order.`;
+    return { q, a };
+  }
+  const faqHTML = (items) => `<dl class="faq">${items.map((f) => `<div><dt>${esc(f.q)}</dt><dd>${f.html || esc(f.a)}</dd></div>`).join("")}</dl>`;
+  const linkChips = (title, links) => (links.length ? `<div class="link-block"><h2>${esc(title)}</h2><div class="chip-list">${links.map(([href, label]) => `<a class="chip" href="${url(href)}">${esc(label)}</a>`).join("")}</div></div>` : "");
+  function priceTableHTML(items, caption, typeCol = true) {
+    const rows = [...items].sort((a, b) => a.price - b.price || a.name.localeCompare(b.name));
+    return `<div class="table-wrap"><table class="price-table"><caption class="sr-only">${esc(caption)}</caption>
+      <thead><tr><th scope="col">Model</th>${typeCol ? '<th scope="col">Type</th>' : ""}<th scope="col">Sizes</th><th scope="col" class="num">Price</th><th scope="col">Availability</th></tr></thead>
+      <tbody>${rows.map((p) => `<tr><th scope="row"><a href="${url(PATHS.product(p))}">${esc(p.name)}</a></th>${typeCol ? `<td>${esc(ucFirst(kindOf(p)))}</td>` : ""}<td>${esc((p.sizes || []).filter(Boolean).join(", ") || "One size")}</td><td class="num">${ucFirst(priceText(p))}${onSale(p) ? ` <s>${peso(p.compareAt)}</s>` : ""}</td><td>${stockLabel(p)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  // Links to the other ways of browsing what's on this page (brands, budgets, types)
+  function exploreHTML(pool, here) {
+    const bikes = pool.filter(isBike);
+    const brands = BRANDS.filter((b) => b.items.some((p) => pool.includes(p)) && PATHS.brand(b) !== here);
+    const cats = D.categories.filter((c) => pool.some((p) => p.category === c.id) && PATHS.cat(c) !== here);
+    return linkChips("Shop by brand", brands.map((b) => [PATHS.brand(b), b.name]))
+      + (bikes.length ? linkChips("Shop by budget", BUDGETS.filter((b) => PATHS.budget(b) !== here).map((b) => [PATHS.budget(b), `Bikes under ${pesoK(b.max)}`])) : "")
+      + linkChips(bikes.length ? "Shop by type" : "Shop by category", cats.map((c) => [PATHS.cat(c), c.type === "bike" ? `${c.label} bikes` : c.label]).concat(HAS_FRAMESETS && bikes.length && here !== PATHS.framesets ? [[PATHS.framesets, "Framesets"]] : []));
+  }
+  function listingSeoHTML(pool, seo) {
+    if (!pool.length || !seo.tableTitle) return "";
+    return `<section class="seo-block" aria-label="${esc(seo.tableTitle)}">
+      <h2>${esc(seo.tableTitle)}</h2>
+      <p class="muted">Prices in Philippine pesos, updated every hour. Tap a model for full specs, sizes and colours.</p>
+      ${priceTableHTML(pool, seo.tableTitle, seo.typeCol !== false)}
+      ${exploreHTML(pool, currentPath())}
+      ${seo.faq && seo.faq.length ? `<h2>${esc(seo.faqTitle || "Frequently asked questions")}</h2>${faqHTML(seo.faq)}` : ""}
+    </section>`;
+  }
+
+  // Answers for a bike type page
+  function categoryFaq(c, items) {
+    if (c.type !== "bike") {
+      const lo = cheapestOf(items), hi = dearestOf(items), n = nounFor(items);
+      return [
+        { q: `How much do ${c.label.toLowerCase()} cost?`, a: items.length > 1 ? `Our ${c.label.toLowerCase()} cost from ${peso(lo.price)} (${lo.name}) to ${peso(hi.price)} (${hi.name}).` : `The ${lo.name} is ${priceText(lo)}.` },
+        stockFaq(items, n, `Which ${n.many} are in stock?`),
+        orderFaq()
+      ];
+    }
+    const one = `${c.label.toLowerCase()} bike`, many = `${c.label.toLowerCase()} bikes`;
+    const complete = items.filter(isComplete);
+    const lo = cheapestOf(complete.length ? complete : items), hi = dearestOf(items);
+    const out = [{ q: `How much is a ${one} in the Philippines?`, a: items.length > 1 ? `At ${D.site.name}, ${many} cost from ${peso(lo.price)} to ${peso(hi.price)}. The most affordable is the ${lo.name} at ${peso(lo.price)}.` : `The ${lo.name} is ${priceText(lo)} at ${D.site.name}.` }];
+    const bd = BUDGETS.find((b) => { const n = complete.filter((p) => p.price <= b.max).length; return n >= 1 && n < complete.length && b.max >= 50000; }) || BUDGETS.find((b) => complete.some((p) => p.price <= b.max) && complete.some((p) => p.price > b.max));
+    if (bd) {
+      const under = complete.filter((p) => p.price <= bd.max).sort((a, b) => b.price - a.price).slice(0, 3);
+      out.push({ q: `What's the best ${one} under ${peso(bd.max)}?`, a: `Our ${many} at ${peso(bd.max)} or less are the ${andList(under.map(named))}. The closer a bike is to your budget, the better its frame and parts usually are.` });
+    }
+    const brands = [...new Set(items.map((p) => p.brand).filter(Boolean))];
+    if (brands.length) out.push({ q: `Which ${one} brands do you sell?`, a: `${andList(brands)}. Every model has its full specs, sizes and colours on its own page.` });
+    out.push(stockFaq(items, { one, many }, `Which ${many} are in stock?`), sizeFaq(), orderFaq());
+    return out;
+  }
+  function brandFaq(b) {
+    const n = nounFor(b.items), lo = cheapestOf(b.items), hi = dearestOf(b.items);
+    const out = [{ q: `How much are ${b.name} ${n.many} in the Philippines?`, a: b.items.length > 1 ? `${b.name} ${n.many} at ${D.site.name} cost from ${peso(lo.price)} (${lo.name}) to ${peso(hi.price)} (${hi.name}).` : `The ${lo.name} is ${priceText(lo)} at ${D.site.name}.` }];
+    const types = D.categories.map((c) => [c, b.items.filter((p) => p.category === c.id && !p.frameset).length]).filter(([, k]) => k);
+    const fs = b.items.filter((p) => p.frameset).length;
+    if (b.items.some(isBike) && (types.length > 1 || fs)) out.push({ q: `What types of ${b.name} bikes do you have?`, a: `${ucFirst(andList(types.map(([c, k]) => `${k} ${c.type === "bike" ? c.label.toLowerCase() : c.label} ${c.type === "bike" ? (k === 1 ? "bike" : "bikes") : ""}`.trim()).concat(fs ? [`${fs} frameset${fs === 1 ? "" : "s"}`] : [])))}.` });
+    out.push(stockFaq(b.items, n, `Which ${b.name} ${n.many} are in stock?`));
+    if (b.items.some(isBike)) out.push(sizeFaq());
+    out.push(orderFaq(`How do I order a ${b.name} ${n.one}?`));
+    return out;
+  }
+  function budgetFaq(bd, items) {
+    const picks = D.categories.filter((c) => c.type === "bike").map((c) => [c, items.filter((p) => p.category === c.id).sort((a, b) => b.price - a.price)[0]]).filter(([, p]) => p);
+    const lo = cheapestOf(D.products.filter(isComplete));
+    const a = `It depends on where you ride. At ${peso(bd.max)} or less, the best-equipped bike we have of each type is: ${picks.map(([c, p]) => `${c.label.toLowerCase()}, the ${named(p)}`).join("; ")}. The closer a bike is to your budget, the better its frame and parts usually are.`;
+    return [
+      { q: `What's the best bike under ${peso(bd.max)}?`, a, html: `${esc(a)} <a href="${url(PATHS.finder)}?max=${bd.max}">Let the Bike Finder rank them for you</a>.` },
+      { q: "What's the cheapest bike you sell?", a: `The ${lo.name} at ${peso(lo.price)}.` },
+      stockFaq(items, { one: "bike", many: "bikes" }, "Are these bikes in stock?"),
+      sizeFaq(),
+      orderFaq()
+    ];
+  }
+  // Answers for one product's page
+  function productFaq(p) {
+    const cs = colorsOf(p).filter((c) => c.name && c.name !== "Standard");
+    const sz = (p.sizes || []).filter(Boolean);
+    const out = [{ q: `How much is the ${p.name} in the Philippines?`, a: `The ${p.name} is ${priceText(p)} at ${D.site.name}${p.priceFrom ? ", depending on size and colour" : ""}${onSale(p) ? `, down from ${peso(p.compareAt)}` : ""}. Prices are in Philippine pesos.` }];
+    if (sz.length > 1 || cs.length > 1) {
+      const a = [sz.length ? `Sizes: ${sz.join(", ")}.` : "", cs.length ? `Colours: ${cs.map((c) => c.name).join(", ")}.` : ""].filter(Boolean).join(" ");
+      const sizeTip = isBike(p) && sz.some((z) => LETTER_SIZES.includes(z.toUpperCase())) ? " Not sure which size? Enter your height above or see our bike size guide." : "";
+      out.push({ q: `What sizes and colours does the ${p.name} come in?`, a: a + sizeTip, html: esc(a + sizeTip).replace("bike size guide", `<a href="${url(PATHS.sizeGuide)}">bike size guide</a>`) });
+    }
+    if (hasVariants(p)) {
+      const inStock = p.variants.filter((v) => v.inStock);
+      const label = (v) => [cs.length > 1 ? colorName(p, v.color) : "", v.size ? `size ${v.size}` : ""].filter(Boolean).join(", ") || "it";
+      const a = !inStock.length ? `It's available to order. Send your order request and we'll confirm stock and the delivery time with you.`
+        : inStock.length === p.variants.length ? "Yes, it's in stock."
+        : `Yes: ${andList(inStock.slice(0, 4).map(label))} ${inStock.length === 1 ? "is" : "are"} in stock. Other sizes and colours are available to order; we confirm the delivery time when you send your order.`;
+      out.push({ q: `Is the ${p.name} in stock?`, a });
+    }
+    if (POL.returnDays != null && POL.returnDays !== "") out.push({ q: `Can I return the ${p.name}?`, a: +POL.returnDays === 0 ? "We don't accept returns, so please check the size and specs with our sales rep before you pay." : `Yes, within ${POL.returnDays} days${POL.returnFees === "free" ? ", and return shipping is free" : ""}.` });
+    if (POL.warranty) out.push({ q: `Does the ${p.name} have a warranty?`, a: POL.warranty });
+    out.push(orderFaq(`How do I order the ${p.name}?`));
+    return out;
+  }
+  // A unique description for Google: price, type, sizes, colours and stock
+  function productMetaDesc(p, v) {
+    const cs = colorsOf(p).filter((c) => c.name && c.name !== "Standard");
+    const what = v ? [cs.length > 1 ? colorName(p, v.color) : "", v.size ? `size ${v.size}` : ""].filter(Boolean).join(", ") : "";
+    const price = v ? peso(v.price) : priceText(p);
+    const was = v ? (v.compareAt > v.price ? ` (was ${peso(v.compareAt)})` : "") : onSale(p) ? ` (was ${peso(p.compareAt)})` : "";
+    const range = [v ? "" : sizesText(p), !v && cs.length > 1 ? `${cs.length} colours` : ""].filter(Boolean).join(" and ");
+    const stock = v ? (v.inStock ? "In stock" : "Available to order") : stockLabel(p);
+    const parts = [
+      `${p.name}${what ? ` (${what})` : ""} price in the Philippines: ${price}${was}.`,
+      `${ucFirst(kindOf(p))}${p.brand && !p.name.startsWith(p.brand) ? ` by ${p.brand}` : ""}${range ? ` in ${range}` : ""}.`,
+      `${stock}.`,
+      "See full specs and order by chat at Cycle Central."
+    ];
+    if (parts.join(" ").length > 160) parts[3] = "Full specs; order by chat.";
+    while (parts.join(" ").length > 160 && parts.length > 1) parts.splice(parts.length - 1, 1);
+    return parts.join(" ");
+  }
+
   function viewHome() {
     const bikes = D.products.filter(isBike);
     const parts = D.products.filter((p) => !isBike(p));
@@ -508,13 +801,13 @@
       <section class="hero">
         <div class="wrap hero-grid">
           <div class="hero-copy">
-            <span class="eyebrow">Online bike shop · Philippines</span>
-            <h1 class="hero-title">Find the right bike for your budget.</h1>
+            <span class="eyebrow">Find the right bike for your budget</span>
+            <h1 class="hero-title">Online bike shop in the Philippines</h1>
             <p>Set what you want to spend and where you ride. We'll show the best bikes for you, with the specs that matter side by side.</p>
             <ul class="hero-points">
               <li>${icon("check", 16)}${bikes.length} bikes from ${peso(fromPrice)}</li>
               <li>${icon("compare", 16)}Compare specs side by side</li>
-              <li>${icon("truck", 16)}Free shipping over ${peso(D.freeShippingThreshold)}</li>
+              ${BRANDS.length ? `<li>${icon("tag", 16)}${esc(andList(BRANDS.filter((b) => b.items.some(isBike)).slice(0, 3).map((b) => b.name)))}${BRANDS.length > 3 ? " and more" : ""}</li>` : `<li>${icon("truck", 16)}Free shipping over ${peso(D.freeShippingThreshold)}</li>`}
             </ul>
           </div>
           <div class="hero-art">${bikeSVG("#3c78c6", "road", { light: true })}</div>
@@ -538,12 +831,20 @@
               return `<a class="cat-card" href="${url(PATHS.cat(c))}">
                 <h3>${esc(c.label)}</h3><p>${esc(c.blurb)}</p>
                 ${inCat.length ? `<span class="from">From ${peso(Math.min(...inCat.map((b) => b.price)))}</span>` : ""}
-                ${sample ? art(sample, 0, false) : ""}
+                ${sample ? art(sample, 0, false, { sizes: SIZES.tile }) : ""}
               </a>`;
             }).join("")}
           </div>
         </div>
       </section>
+
+      ${BRANDS.length || BUDGETS.length ? `<section class="section tight">
+        <div class="wrap shop-by">
+          ${BRANDS.length ? `<div><div class="section-head"><div><h2>Shop by brand</h2></div><a class="text-link" href="${url(PATHS.brands)}">All brands ${icon("arrow", 16)}</a></div>
+            <div class="brand-grid">${BRANDS.slice(0, 6).map((b) => `<a class="brand-card" href="${url(PATHS.brand(b))}"><span class="art">${art(b.items[0], 0, false, { sizes: SIZES.tile })}</span><strong>${esc(b.name)}</strong><span>${b.items.length} model${b.items.length === 1 ? "" : "s"} · from ${pesoK(cheapestOf(b.items).price)}</span></a>`).join("")}</div></div>` : ""}
+          ${BUDGETS.length ? `<div class="link-block"><h2>Shop by budget</h2><div class="chip-list">${BUDGETS.map((b) => `<a class="chip" href="${url(PATHS.budget(b))}">Bikes under ${pesoK(b.max)} <small>${b.count}</small></a>`).join("")}${HAS_FRAMESETS ? `<a class="chip" href="${url(PATHS.framesets)}">Framesets</a>` : ""}</div></div>` : ""}
+        </div>
+      </section>` : ""}
 
       <section class="section">
         <div class="wrap">
@@ -599,6 +900,9 @@
             <h3>Shop by type</h3>
             <ul>${D.categories.map((c) => `<li><a href="${url(PATHS.cat(c))}">${esc(c.seoTitle ? c.seoTitle.replace(/ for Sale in the Philippines$/, "") : c.label)}</a></li>`).join("")}
               <li><a href="${url(PATHS.sale)}">Bikes and parts on sale</a></li>
+              ${BRANDS.slice(0, 6).map((b) => `<li><a href="${url(PATHS.brand(b))}">${esc(b.name)} ${nounFor(b.items).many} price list</a></li>`).join("")}
+              <li><a href="${url(PATHS.chooseGuide)}">How to choose a bike</a></li>
+              <li><a href="${url(PATHS.sizeGuide)}">Bike size guide</a></li>
               <li><a href="${url(PATHS.finder)}">Bike Finder</a></li></ul>
           </nav>
         </div>
@@ -625,15 +929,69 @@
     else if (scope === "parts") { base = (p) => !isBike(p); title = "Parts & Gear"; seo = pg.parts; }
     else if (scope === "sale") { base = onSale; title = "Sale"; seo = pg.sale; }
     else if (scope === "favourites") { base = (p) => S.favs.includes(p.id); title = "Favourites"; seo = { seoTitle: "Your Favourites", noindex: true }; }
+    else if (scope.startsWith("brand:")) {
+      const b = brandOf(scope.slice(6));
+      if (!b) return viewNotFound();
+      const n = nounFor(b.items), lo = cheapestOf(b.items), hi = dearestOf(b.items);
+      const inStock = b.items.filter(inStockAny).length;
+      base = (p) => brandFor(p) === b;
+      title = `${b.name} ${ucFirst(n.many)}`;
+      crumb = { name: "Brands", path: PATHS.brands };
+      seo = {
+        seoTitle: `${title} Price List Philippines ${YEAR}`,
+        intro: `${brandInfo(b) ? brandInfo(b) + " " : ""}Every ${b.name} ${n.one} we sell, with prices in Philippine pesos: ${b.items.length} model${b.items.length === 1 ? "" : "s"} from ${peso(lo.price)}${hi.price > lo.price ? ` to ${peso(hi.price)}` : ""}. ${inStock ? `${inStock} in stock now, the rest available to order.` : "All available to order."} Compare specs, choose your size and colour, and order by chat.`,
+        metaDescription: `${b.name} price list in the Philippines (${YEAR}): ${b.items.length} ${b.items.length === 1 ? n.one : n.many} from ${peso(lo.price)}, including the ${andList(b.items.slice(0, 2).map((p) => p.name.replace(b.name + " ", "")))}. Specs, sizes and colours.`,
+        tableTitle: `${b.name} price list (${YEAR})`, faq: brandFaq(b), faqTitle: `${b.name} ${n.many}: questions and answers`
+      };
+    }
+    else if (scope.startsWith("budget:")) {
+      const bd = budgetOf(scope.slice(7));
+      if (!bd) return viewNotFound();
+      base = (p) => isComplete(p) && p.price <= bd.max;
+      const items = D.products.filter(base);
+      const types = D.categories.filter((c) => c.type === "bike").map((c) => [c, items.filter((p) => p.category === c.id).length]).filter(([, k]) => k);
+      title = `Bikes Under ${peso(bd.max)}`;
+      crumb = { name: "Bikes", path: PATHS.bikes };
+      seo = {
+        seoTitle: `Best Bikes Under ${peso(bd.max)} in the Philippines (${YEAR})`, defaultSort: "high",
+        intro: `${items.length} complete bikes at ${peso(bd.max)} or less: ${andList(types.map(([c, k]) => `${k} ${c.label.toLowerCase()}`))}. The best-equipped bikes, closest to your budget, are listed first. Compare them side by side, or let the Bike Finder rank them for how you ride.`,
+        metaDescription: `The best bikes under ${peso(bd.max)} in the Philippines: ${items.length} road, gravel, mountain and city bikes with prices, specs and sizes, best-equipped first. Order by chat.`,
+        tableTitle: `Bikes under ${peso(bd.max)}: price list (${YEAR})`, faq: budgetFaq(bd, items), faqTitle: `Choosing a bike under ${peso(bd.max)}`
+      };
+      if (types.length < 3) seo.metaDescription = `The best bikes under ${peso(bd.max)} in the Philippines: ${items.length} ${andList(types.map(([c]) => c.label.toLowerCase()))} bikes with prices, specs and sizes, best-equipped first. Order by chat.`;
+    }
+    else if (scope === "framesets") {
+      base = (p) => !!p.frameset;
+      const items = D.products.filter(base), lo = cheapestOf(items);
+      title = "Framesets";
+      crumb = { name: "Bikes", path: PATHS.bikes };
+      seo = {
+        seoTitle: `Bike Framesets Price List Philippines ${YEAR}`,
+        intro: `Frame and fork sets to build your own bike: ${items.length} framesets from ${andList([...new Set(items.map((p) => p.brand).filter(Boolean))])}, from ${peso(lo.price)}. Ask us about a full build with the parts you want.`,
+        metaDescription: `Bike framesets in the Philippines: ${items.length} road and gravel frame and fork sets from ${peso(lo.price)}, with sizes, colours and prices in pesos. Order by chat at Cycle Central.`,
+        tableTitle: `Frameset price list (${YEAR})`, faq: [stockFaq(items, { one: "frameset", many: "framesets" }, "Which framesets are in stock?"), sizeFaq(), orderFaq()], faqTitle: "Framesets: questions and answers"
+      };
+    }
     else {
       const c = catOf(scope);
       if (!c) return viewNotFound();
       base = (p) => p.category === scope;
       title = c.type === "bike" ? `${c.label} Bikes` : c.label;
       crumb = { name: c.type === "bike" ? "Bikes" : "Parts & Gear", path: c.type === "bike" ? PATHS.bikes : PATHS.parts };
-      seo = { seoTitle: c.seoTitle || title, intro: c.intro, metaDescription: c.metaDescription };
+      const items = D.products.filter((p) => p.category === scope);
+      seo = {
+        seoTitle: c.seoTitle || title, intro: c.intro, metaDescription: c.metaDescription,
+        tableTitle: `${c.type === "bike" ? `${c.label} bike` : c.label} prices (${YEAR})`, faq: categoryFaq(c, items), faqTitle: `${title}: questions and answers`
+      };
+      // A short description gets the number of models and the starting price
+      const extra = ` ${items.length} model${items.length === 1 ? "" : "s"} from ${peso(cheapestOf(items).price)}.`;
+      const md = seo.metaDescription || seo.intro || "";
+      if (md.length < 120 && md.length + extra.length <= 160) seo.metaDescription = md + extra;
       trackCategory(scope);
     }
+    if (scope === "bikes") Object.assign(seo, { tableTitle: `Bike price list (${YEAR})` });
+    if (scope === "parts") Object.assign(seo, { tableTitle: `Parts price list (${YEAR})` });
+    if (scope === "sale") Object.assign(seo, { tableTitle: "Sale prices", typeCol: true });
     const pool = D.products.filter(base);
     const allBikes = pool.length > 0 && pool.every(isBike);
     const noun = allBikes ? "bike" : "item";
@@ -650,7 +1008,7 @@
     Object.assign(F, {
       cats: list("type", cats), frame: list("frame", frames), level: list("level", levels),
       min: Math.max(0, +q.get("min") || 0), max: +q.get("max") > 0 ? +q.get("max") : null,
-      sale: q.get("sale") === "1", sort: q.get("sort") || "featured"
+      sale: q.get("sale") === "1", sort: q.get("sort") || seo.defaultSort || "featured"
     });
 
     const matches = (p, ignorePrice) => (!F.cats.length || F.cats.includes(p.category))
@@ -663,21 +1021,21 @@
     const chip = (k, v, label) => { const on = F[k].includes(v); return `<button class="chip ${on ? "on" : ""}" data-action="filter-toggle" data-k="${k}" data-v="${esc(v)}" aria-pressed="${on}">${esc(label)}</button>`; };
 
     const groupsHTML = () => `
-      <div class="filter-group"><h4>Budget</h4>
+      <div class="filter-group"><h2>Budget</h2>
         <div class="chip-list">${bands.filter(([a]) => a < top).map((b) => { const on = F.min === b[0] && F.max === b[1]; return `<button class="chip ${on ? "on" : ""}" data-action="filter-band" data-min="${b[0]}" data-max="${b[1] ?? ""}" aria-pressed="${on}">${bandLabel(b)}</button>`; }).join("")}</div>
         <input class="range" type="range" id="priceRange" min="0" max="${top}" step="${step}" value="${F.max == null ? top : Math.min(F.max, top)}" aria-label="Maximum price" style="--fill:${((F.max == null ? top : Math.min(F.max, top)) / top) * 100}%">
         <p class="filter-note" id="priceLabel">${F.max == null && !F.min ? "Any price" : budgetLabel()}</p>
       </div>
-      ${cats.length > 1 ? `<div class="filter-group"><h4>${allBikes ? "Bike type" : "Category"}</h4><div class="chip-list">${cats.map((c) => chip("cats", c, catOf(c).label)).join("")}</div></div>` : ""}
-      ${frames.length > 1 ? `<div class="filter-group"><h4>Frame</h4><div class="chip-list">${frames.map((f) => chip("frame", f, f)).join("")}</div></div>` : ""}
-      ${levels.length > 1 ? `<div class="filter-group"><h4>Rider level</h4><div class="chip-list">${levels.map((l) => chip("level", l, LEVELS.find((x) => x.v === l).label)).join("")}</div></div>` : ""}
+      ${cats.length > 1 ? `<div class="filter-group"><h2>${allBikes ? "Bike type" : "Category"}</h2><div class="chip-list">${cats.map((c) => chip("cats", c, catOf(c).label)).join("")}</div></div>` : ""}
+      ${frames.length > 1 ? `<div class="filter-group"><h2>Frame</h2><div class="chip-list">${frames.map((f) => chip("frame", f, f)).join("")}</div></div>` : ""}
+      ${levels.length > 1 ? `<div class="filter-group"><h2>Rider level</h2><div class="chip-list">${levels.map((l) => chip("level", l, LEVELS.find((x) => x.v === l).label)).join("")}</div></div>` : ""}
       ${scope !== "sale" && pool.some(onSale) ? `<div class="filter-group"><label class="check"><input type="checkbox" id="fSale" ${F.sale ? "checked" : ""}> On sale only</label></div>` : ""}
       ${allBikes ? `<div class="filter-group"><a class="text-link" href="${url(PATHS.finder)}">${icon("target", 16)}Help me choose</a></div>` : ""}`;
 
     const sorts = [["featured", "Recommended"], ["low", "Price: low to high"], ["high", "Price: high to low"]];
     if (allBikes) sorts.push(["light", "Lightest first"]);
     if (pool.some(onSale)) sorts.push(["save", "Biggest saving"]);
-    if (!sorts.some(([v]) => v === F.sort)) F.sort = "featured";
+    if (!sorts.some(([v]) => v === F.sort)) F.sort = seo.defaultSort || "featured";
 
     app.innerHTML = `
       <div class="wrap">
@@ -702,6 +1060,7 @@
             <div class="product-grid" id="grid"></div>
           </section>
         </div>
+        ${listingSeoHTML(pool, seo)}
       </div>`;
 
     const draw = (keepControls) => {
@@ -727,14 +1086,14 @@
         else if (cheapest && F.max != null && cheapest.price > F.max) empty = `<div class="empty"><h2>Nothing up to ${peso(F.max)} here</h2><p>The lowest price that matches is the ${esc(cheapest.name)} at ${peso(cheapest.price)}.</p><button class="btn btn-brand" data-action="filter-band" data-min="0" data-max="${Math.ceil(cheapest.price / step) * step}">Show up to ${peso(Math.ceil(cheapest.price / step) * step)}</button></div>`;
         else empty = `<div class="empty"><h2>No matches</h2><p>Try removing a filter.</p><button class="btn btn-brand" data-action="clear-filters">Clear all filters</button></div>`;
       }
-      $("#grid").innerHTML = sorted.length ? sorted.map((p) => card(p)).join("") : empty;
+      $("#grid").innerHTML = sorted.length ? sorted.map((p, i) => card(p, { eager: i < 4 })).join("") : empty;
       $("#resultCount").textContent = `${sorted.length} ${noun}${sorted.length === 1 ? "" : "s"}`;
       $("#sheetShow").textContent = `Show ${sorted.length} ${noun}${sorted.length === 1 ? "" : "s"}`;
       $("#activeFilters").innerHTML = pills.length ? pills.join("") + `<button class="text-link" data-action="clear-filters">Clear all</button>` : "";
       $("#filterCount").textContent = pills.length ? ` (${pills.length})` : "";
       if (!keepControls) $("#filterGroups").innerHTML = groupsHTML();
       else { $("#priceLabel").textContent = F.max == null && !F.min ? "Any price" : budgetLabel(); $("#priceRange").style.setProperty("--fill", ($("#priceRange").value / top) * 100 + "%"); }
-      setQuery({ type: F.cats.join(","), min: F.min || "", max: F.max ?? "", frame: F.frame.join(","), level: F.level.join(","), sale: F.sale ? "1" : "", sort: F.sort === "featured" ? "" : F.sort });
+      setQuery({ type: F.cats.join(","), min: F.min || "", max: F.max ?? "", frame: F.frame.join(","), level: F.level.join(","), sale: F.sale ? "1" : "", sort: F.sort === (seo.defaultSort || "featured") ? "" : F.sort });
     };
 
     shop = {
@@ -751,7 +1110,8 @@
       title: seo.seoTitle || title,
       description: seo.metaDescription || seo.intro || `${title} at ${D.site.name}. Prices in Philippine pesos.`,
       noindex: !!seo.noindex,
-      crumbs: [...(crumb ? [crumb] : []), { name: title, path: currentPath() }]
+      crumbs: [...(crumb ? [crumb] : []), { name: title, path: currentPath() }],
+      schema: seo.noindex ? [] : [listLD(seo.seoTitle || title, pool), seo.faq && seo.faq.length ? faqLD(seo.faq.map((f) => ({ q: f.q, text: f.a }))) : null]
     });
   }
 
@@ -775,8 +1135,6 @@
   const needsSize = (p, sel) => (isBike(p) || hasVariants(p)) && sel.size == null && sizeOptions(p, sel.color).length > 0;
   // A part with more than one SKU (tire sizes, colours) is chosen in the quick view, not added straight from a card
   const needsChoice = (p) => hasVariants(p) && p.variants.length > 1;
-  // Complete bikes only: framesets aren't suggested by the Bike Finder or as alternatives
-  const isComplete = (p) => isBike(p) && !p.frameset;
 
   function availHTML(p, sel) {
     if (!hasVariants(p)) return p.stock > 0 && p.stock <= 5 ? `<span class="stock-low">Only ${p.stock} left in stock</span>` : "";
@@ -793,14 +1151,14 @@
     const cs = colorsOf(p), sizes = sizeOptions(p, sel.color);
     const showSizes = (isBike(p) || hasVariants(p)) && (sizes.length > 1 || (sizes.length === 1 && sizes[0] !== ""));
     const colourBlock = cs.length > 1
-      ? `<div class="pdp-block"><h4>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h4><div class="swatches lg">${cs.map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>`
+      ? `<div class="pdp-block"><h2>Colour<b class="color-picked">${esc(colorName(p, sel.color))}</b></h2><div class="swatches lg">${cs.map((c, i) => `<button class="swatch ${i === sel.color ? "active" : ""}" style="background:${c.hex}" data-action="opt-color" data-i="${i}" aria-label="${esc(c.name)}" title="${esc(c.name)}" aria-pressed="${i === sel.color}"></button>`).join("")}</div></div>`
       : cs.length === 1 && hasVariants(p) && cs[0].name !== "Standard" ? `<p class="one-colour">Colour <b>${esc(cs[0].name)}</b></p>` : "";
     const lettered = sizes.some(heightFor);
-    const sizeBlock = showSizes ? `<div class="pdp-block"><h4>${lettered || !hasVariants(p) ? "Frame size" : "Size"}<b class="size-picked">${sel.size != null && sizes.length > 1 ? esc(sizeLabel(sel.size)) : ""}</b></h4>
+    const sizeBlock = showSizes ? `<div class="pdp-block"><h2>${lettered || !hasVariants(p) ? "Frame size" : "Size"}<b class="size-picked">${sel.size != null && sizes.length > 1 ? esc(sizeLabel(sel.size)) : ""}</b></h2>
         <div class="size-grid">${sizes.map((sz) => {
           const z = heightFor(sz), v = variantOf(p, sel.color, sz), on = sel.size === sz;
           const sub = z ? `${z.min}–${z.max} cm` : v ? (v.inStock ? "In stock" : "To order") : "";
-          return `<button class="size-btn ${on ? "on" : ""} ${v && !v.inStock ? "to-order" : ""}" data-action="opt-size" data-s="${esc(sz)}" aria-pressed="${on}" aria-label="Size ${esc(sizeLabel(sz))}${z ? `, for riders ${z.min} to ${z.max} cm` : ""}${v && !v.inStock ? ", available to order" : ""}">${esc(sizeLabel(sz))}${sub ? `<small>${sub}</small>` : ""}</button>`;
+          return `<button class="size-btn ${on ? "on" : ""} ${v && !v.inStock ? "to-order" : ""}" data-action="opt-size" data-s="${esc(sz)}" aria-pressed="${on}"><span class="sr-only">Size </span>${esc(sizeLabel(sz))}${sub ? `<small>${sub}</small>` : ""}${v && !v.inStock && z ? `<span class="sr-only">, available to order</span>` : ""}</button>`;
         }).join("")}</div></div>` : "";
     return colourBlock + sizeBlock + `<p class="avail" aria-live="polite">${availHTML(p, sel)}</p>`;
   }
@@ -811,7 +1169,7 @@
   }
   function galleryHTML(p, ci) {
     const ph = photosOf(p, ci);
-    return ph.length > 1 ? `<div class="thumbs" role="group" aria-label="More photos">${ph.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-action="photo" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${esc(u)}" alt="" loading="lazy" decoding="async"></button>`).join("")}</div>` : "";
+    return ph.length > 1 ? `<div class="thumbs" role="group" aria-label="More photos">${ph.map((u, i) => `<button class="thumb ${i === 0 ? "on" : ""}" data-action="photo" data-i="${i}" aria-label="Photo ${i + 1}">${photoTag(u, "", { sizes: "96px" })}</button>`).join("")}</div>` : "";
   }
   // Redraw what depends on the selection: options, price, buy bar, and (on the product page) the address
   function refreshSelection(root, sel) {
@@ -828,7 +1186,7 @@
   function showColour(root, sel) {
     const p = byId(sel.id);
     const media = sel === QV ? $("#quickArt") : $("#pdpArt");
-    if (media) media.innerHTML = art(p, sel.color);
+    if (media) media.innerHTML = art(p, sel.color, true, { sizes: sel === QV ? SIZES.quick : SIZES.hero, eager: true });
     const thumbs = $("#pdpThumbs"); if (thumbs && sel === PDP) thumbs.innerHTML = galleryHTML(p, sel.color);
   }
   const descHTML = (p) => (p.description ? p.description.split(/\n\s*\n/).map((para) => `<p class="pdp-desc">${esc(para.trim())}</p>`).join("") : `<p class="pdp-desc">${esc(productDescription(p))}</p>`);
@@ -875,13 +1233,14 @@
     const shown = priceOf(p, PDP.color, PDP.size);
     const xp = Math.max(1, Math.floor(shown.price / 1000));
     const specs = fullSpecs(p);
+    const faq = productFaq(p);
 
     app.innerHTML = `
       <div class="wrap">
         ${crumbsHTML([top, { name: catTitle, path: PATHS.cat(c) }, { name: p.name }], "padding-top:20px")}
         <div class="pdp">
           <div class="pdp-visual">
-            <div class="pdp-media" id="pdpArt">${art(p, PDP.color)}</div>
+            <div class="pdp-media" id="pdpArt">${art(p, PDP.color, true, { sizes: SIZES.hero, eager: true })}</div>
             <div id="pdpThumbs">${galleryHTML(p, PDP.color)}</div>
           </div>
           <div class="pdp-buy">
@@ -903,7 +1262,8 @@
             <div class="pdp-links">${bike ? compareBtn(p, "text-link") : ""}${askBtn(p)}</div>
             <ul class="assure">
               <li>${icon("truck")}${shown.price >= D.freeShippingThreshold ? "Free shipping on this item" : `Free shipping on orders over ${peso(D.freeShippingThreshold)}`}</li>
-              <li>${icon("returns")}30-day returns</li>
+              <li>${icon("chat")}Order by chat: a sales rep confirms size, stock and delivery</li>
+              ${POL.returnDays ? `<li>${icon("returns")}${POL.returnDays}-day returns</li>` : ""}
               <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(shown.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
             </ul>
           </div>
@@ -913,19 +1273,31 @@
           <section>${bike ? versusHTML(p) : ""}</section>
         </div>` : ""}
         ${related.length ? `<section class="section tight"><div class="section-head"><h2>${bike ? (HAS_PARTS ? "Complete your build" : "Similar bikes") : "You may also like"}</h2></div><div class="rail">${related.map((x) => card(x)).join("")}</div></section>` : ""}
+        <section class="seo-block pdp-faq">
+          <h2>${esc(p.name)}: questions and answers</h2>
+          ${faqHTML(faq)}
+          ${linkChips("More to explore", [
+            ...(brandFor(p) ? [[PATHS.brand(brandFor(p)), `All ${brandFor(p).name} ${nounFor(brandFor(p).items).many}`]] : []),
+            [PATHS.cat(c), `All ${catTitle.toLowerCase()}`],
+            ...(p.frameset && HAS_FRAMESETS ? [[PATHS.framesets, "All framesets"]] : []),
+            ...(isComplete(p) && budgetFor(p.price) ? [[PATHS.budget(budgetFor(p.price)), `Bikes under ${pesoK(budgetFor(p.price).max)}`]] : []),
+            ...(bike ? [[PATHS.sizeGuide, "Bike size guide"], [PATHS.chooseGuide, "How to choose a bike"]] : [])
+          ])}
+        </section>
       </div>`;
     setupBuyBar(p);
     const v = variant || null;
     const what = v ? [colorsOf(p).length > 1 ? colorName(p, v.color) : "", v.size ? `size ${v.size}` : ""].filter(Boolean).join(", ") : "";
     setMeta({
-      title: `${p.name}${what ? ` (${what})` : ""} – ${c.singular || c.label}`,
-      description: `${productDescription(p)} ${what ? `${what[0].toUpperCase() + what.slice(1)}, ` : ""}${peso(v ? v.price : p.price)}${!v && p.priceFrom ? " and up" : ""} at ${D.site.name}.`,
+      title: `${p.name}${what ? ` (${what})` : ""} ${`${p.name} Price in the Philippines`.length > 65 ? "Price Philippines" : "Price in the Philippines"}`,
+      description: productMetaDesc(p, v),
       type: "product",
       image: productImage(p, v ? v.color : 0),
-      imageAlt: p.name,
+      imageAlt: p.name + (what ? `, ${what}` : ""),
       crumbs: [top, { name: catTitle, path: PATHS.cat(c) }, { name: p.name, path: PATHS.product(p) }],
       product: p, variant: v,
-      canonicalPath: v ? PATHS.product(p) : null
+      canonicalPath: v ? PATHS.product(p) : null,
+      schema: [faqLD(faq.map((f) => ({ q: f.q, text: f.a })))]
     });
   }
 
@@ -976,7 +1348,7 @@
     const specs = fullSpecs(p);
     $("#quickCard").innerHTML = `<button class="icon-btn modal-close" data-action="close-all" aria-label="Close">${icon("close")}</button>
       <div class="quick">
-        <div class="quick-media" id="quickArt">${art(p, QV.color)}</div>
+        <div class="quick-media" id="quickArt">${art(p, QV.color, true, { sizes: SIZES.quick, eager: true })}</div>
         <div class="quick-info">
           <div><span class="card-meta">${esc(metaLine(p))}</span><h2>${esc(p.name)}</h2></div>
           <div class="price-row sel-price">${priceHTML(priceOf(p, QV.color, QV.size))}${stars(p)}</div>
@@ -1029,7 +1401,7 @@
           <p style="margin-top:28px"><button class="btn btn-ghost btn-sm" data-action="reset">Reset my progress</button></p>
         </section>
       </div>`;
-    setMeta({ title: D.pages.rewards.seoTitle, description: D.pages.rewards.metaDescription, crumbs: [{ name: "Rewards", path: PATHS.rewards }] });
+    setMeta({ title: D.pages.rewards.seoTitle, description: D.pages.rewards.metaDescription, noindex: true, crumbs: [{ name: "Rewards", path: PATHS.rewards }] });
   }
 
   function viewNotFound() {
@@ -1103,7 +1475,7 @@
       const p = byId(l.id), v = variantOf(p, l.color, l.size), each = linePrice(l);
       const opts = [colorsOf(p).length > 1 ? colorName(p, l.color) : "", l.size ? `Size ${sizeLabel(l.size)}` : "", peso(each)].filter(Boolean).join(" · ");
       return `<div class="cart-line">
-        <div class="thumb">${art(p, l.color, false)}</div>
+        <div class="thumb">${art(p, l.color, false, { sizes: SIZES.thumb })}</div>
         <div><strong>${esc(p.name)}</strong><small>${esc(opts)}</small>${v && !v.inStock ? `<small class="to-order-note">Available to order</small>` : ""}
           <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
             <div class="qty"><button data-action="line-qty" data-key="${l.key}" data-d="-1" aria-label="Decrease">−</button><span>${l.qty}</span><button data-action="line-qty" data-key="${l.key}" data-d="1" aria-label="Increase">+</button></div>
@@ -1309,6 +1681,198 @@
     setMeta({ title: pg.seoTitle, description: pg.metaDescription, crumbs: [{ name: "How to order", path: PATHS.order }] });
   }
 
+  /* ---------- Brands ---------- */
+  const BRAND_INFO = {
+    trek: "Trek is an American bike brand, founded in 1976 in Waterloo, Wisconsin. Its range runs from Marlin hardtails and FX hybrids to Domane endurance, Madone aero and Checkpoint gravel bikes.",
+    cannondale: "Cannondale is an American bike brand, founded in 1971, best known for its aluminium CAAD frames and its SuperSix EVO, Synapse, Topstone and Trail models.",
+    colnago: "Colnago is an Italian bike maker, founded by Ernesto Colnago in 1954 in Cambiago, near Milan. Its race frames have won the Tour de France and the world championships.",
+    giant: "Giant is a Taiwanese bike brand, founded in 1972 and one of the world's largest bicycle makers, known for its TCR, Defy, Propel and Revolt road and gravel bikes.",
+    specialized: "Specialized is an American bike brand, founded in 1974 in California, known for the Tarmac, Roubaix, Allez, Diverge and Stumpjumper.",
+    michelin: "Michelin is a French tire maker, founded in 1889, that made the first quick-to-repair removable bicycle tire in 1891. Its cycling tires cover road racing, gravel and mountain biking.",
+    shimano: "Shimano is a Japanese maker of bike components, founded in 1921 in Sakai, Osaka, and the most common choice of gears and brakes on bikes worldwide.",
+    sram: "SRAM is an American maker of bike components, founded in 1987 in Chicago, known for its wireless AXS electronic shifting and Eagle mountain bike groupsets."
+  };
+  const brandInfo = (b) => BRAND_INFO[b.slug] || "";
+  function viewBrands() {
+    const types = (b) => andList(D.categories.filter((c) => b.items.some((p) => p.category === c.id)).map((c) => (c.type === "bike" ? c.label.toLowerCase() : c.label.toLowerCase())));
+    const total = D.products.length;
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="page-head">
+          ${crumbsHTML([{ name: "Brands" }])}
+          <h1>Bike brands</h1>
+          <p class="page-intro">${BRANDS.length} brands at ${D.site.name}: ${esc(andList(BRANDS.map((b) => b.name)))}. ${total} models in all, each with its price in Philippine pesos, full specs, sizes and colours.</p>
+        </div>
+        <div class="brand-grid">${BRANDS.map((b) => `<a class="brand-card" href="${url(PATHS.brand(b))}">
+          <span class="art">${art(b.items[0], 0, false, { sizes: SIZES.tile })}</span>
+          <strong>${esc(b.name)}</strong><span>${b.items.length} model${b.items.length === 1 ? "" : "s"} · from ${peso(cheapestOf(b.items).price)}</span></a>`).join("")}</div>
+        <section class="seo-block">
+          <h2>Brands at a glance</h2>
+          <div class="table-wrap"><table class="price-table"><thead><tr><th scope="col">Brand</th><th scope="col">What we sell</th><th scope="col" class="num">Models</th><th scope="col" class="num">Prices</th></tr></thead>
+          <tbody>${BRANDS.map((b) => `<tr><th scope="row"><a href="${url(PATHS.brand(b))}">${esc(b.name)}</a></th><td>${esc(ucFirst(types(b)))}</td><td class="num">${b.items.length}</td><td class="num">${peso(cheapestOf(b.items).price)}${dearestOf(b.items).price > cheapestOf(b.items).price ? ` – ${peso(dearestOf(b.items).price)}` : ""}</td></tr>`).join("")}</tbody></table></div>
+          ${BRANDS.some(brandInfo) ? `<h2>About the brands</h2>${BRANDS.filter(brandInfo).map((b) => `<h3><a href="${url(PATHS.brand(b))}">${esc(b.name)}</a></h3><p>${esc(brandInfo(b))}</p>`).join("")}` : ""}
+        </section>
+      </div>`;
+    setMeta({
+      title: `Bike Brands: ${andList(BRANDS.slice(0, 3).map((b) => b.name))} & More`,
+      description: `Shop ${andList(BRANDS.map((b) => b.name))} at ${D.site.name}. Price lists in Philippine pesos with full specs, sizes and colours for every model.`,
+      crumbs: [{ name: "Brands", path: PATHS.brands }],
+      schema: [{ "@type": "CollectionPage", name: "Bike brands", url: absUrl(PATHS.brands), mainEntity: { "@type": "ItemList", itemListElement: BRANDS.map((b, i) => ({ "@type": "ListItem", position: i + 1, url: absUrl(PATHS.brand(b)), name: b.name })) } }]
+    });
+  }
+
+  /* ---------- Guides ---------- */
+  const GUIDE_DATE = "2026-11-17"; // change when a guide is rewritten
+  const ftIn = (cm) => { let inch = Math.round(cm / 2.54); return `${Math.floor(inch / 12)}′${inch % 12}″`; };
+  const sizeForHeight = (cm) => D.sizes.find((z) => cm >= z.min && cm < z.max);
+  const TYPE_GUIDE = {
+    road: "For paved roads, group rides and fitness. Drop handlebars, narrow tires (about 25–32 mm) and light frames make road bikes the fastest bikes on tarmac. Endurance models have a more upright position for long days; race and aero models are lower and stiffer.",
+    gravel: "For mixed roads: tarmac, dirt and rough backroads on one bike. Drop handlebars with wide tires (about 38–50 mm), stable handling and mounts for bags and racks. A good choice if you want one bike for almost everything.",
+    mountain: "For trails. Flat handlebars, wide knobby tires and suspension. Hardtails (front suspension only) are lighter, simpler and more affordable; full-suspension bikes are more comfortable and capable on rough descents.",
+    city: "For commuting and everyday rides. An upright position, flat handlebars and comfortable tires, often with mounts for fenders and a rack. Fitness hybrids are lighter and quicker, for riders who want exercise as well as transport.",
+    electric: "A motor assists you as you pedal, so hills, heat and long distances get easier. E-bikes are heavier and cost more, and the battery needs charging; range depends on battery size (Wh), terrain and the assist level you use.",
+    folding: "Folds down to fit in a car, a condo or on the train. Small wheels make it nimble in town, though it's less suited to long, fast rides."
+  };
+  const GUIDES = {
+    "bike-size-guide": {
+      title: "Bike size guide", seoTitle: "Bike Size Chart by Height (cm & ft): Which Size Do I Need?",
+      description: "Find your bike size by height in cm and feet: a simple chart for road, gravel, mountain and city bikes, road frame sizes in cm, and how to measure your inseam.",
+      body() {
+        const road = [[152, 160, "47–50"], [160, 168, "50–52"], [168, 175, "53–54"], [175, 183, "55–56"], [183, 190, "57–58"], [190, 200, "59–61"]];
+        const hasML = D.products.some((p) => (p.sizes || []).includes("ML"));
+        const asks = [152, 160, 165, 170, 175, 180, 185].map((cm) => [cm, sizeForHeight(cm)]).filter(([, z]) => z);
+        const faq = asks.map(([cm, z]) => ({ q: `What size bike do I need if I'm ${ftIn(cm)} (${cm} cm)?`, a: `Size ${z.s} in most brands, which fits riders about ${z.min}–${z.max} cm tall. Check the size we suggest on each bike's page, as every brand's chart is a little different.` }));
+        return {
+          faq,
+          html: `
+          <p class="lead">The right size matters more than almost any spec: a bike that fits is comfortable, efficient and easier to control. Use these charts as a starting point, then enter your height on any bike's page to see the size we suggest for that model. A sales rep double-checks your size before you pay.</p>
+          <h2>Bike size chart by height</h2>
+          <p>Most road, gravel, mountain and city bikes come in letter sizes. Find your height without shoes:</p>
+          <div class="table-wrap"><table class="price-table"><thead><tr><th scope="col">Size</th><th scope="col">Rider height (cm)</th><th scope="col">Rider height (ft)</th></tr></thead>
+          <tbody>${D.sizes.map((z) => `<tr><th scope="row">${esc(z.s)}</th><td>${z.min}–${z.max} cm</td><td>${ftIn(z.min)} – ${ftIn(z.max)}</td></tr>`).join("")}</tbody></table></div>
+          ${hasML ? `<p>Some brands, such as Trek, also make an <b>ML</b> size between M and L, for riders at the top of M or the bottom of L.</p>` : ""}
+          <h2>Road and gravel frame sizes in centimetres</h2>
+          <p>Road and gravel frames are often sized by the length of the seat tube in centimetres:</p>
+          <div class="table-wrap"><table class="price-table"><thead><tr><th scope="col">Rider height</th><th scope="col">Frame size</th></tr></thead>
+          <tbody>${road.map(([a, b, f]) => `<tr><th scope="row">${a}–${b} cm (${ftIn(a)} – ${ftIn(b)})</th><td>${f} cm</td></tr>`).join("")}</tbody></table></div>
+          <h2>How to measure yourself</h2>
+          <ol class="steps-list">
+            <li><b>Height:</b> stand against a wall without shoes, put a book flat on your head and mark the wall under it. Measure from the floor to the mark.</li>
+            <li><b>Inseam:</b> stand with your feet about 15 cm apart and pull a book up firmly between your legs, spine against the wall. Measure from the floor to the top of the book.</li>
+          </ol>
+          <h2>Quick inseam formulas</h2>
+          <ul class="steps-list">
+            <li><b>Road and gravel:</b> inseam (cm) × 0.67 = frame size in cm. An 80 cm inseam suggests a 54 cm frame.</li>
+            <li><b>Mountain:</b> inseam (cm) × 0.226 = frame size in inches. An 80 cm inseam suggests an 18″ frame (size M).</li>
+            <li><b>City and hybrid:</b> inseam (cm) × 0.685 = frame size in cm.</li>
+          </ul>
+          <h2>Between two sizes?</h2>
+          <p>Pick the smaller size if you like a more upright, nimble ride or have shorter arms; pick the larger one if you want a more stretched-out position or have long arms. Saddle height, stem length and handlebar position fine-tune the fit, and our sales rep can help you choose.</p>
+          <h2>Mountain bike wheel sizes</h2>
+          <p>Most mountain bikes use 29″ wheels, which roll over obstacles more easily. Some small frames use 27.5″ wheels so shorter riders get a better fit; the product page lists the wheels for each size.</p>`
+        };
+      }
+    },
+    "how-to-choose-a-bike": {
+      title: "How to choose a bike", seoTitle: "How to Choose a Bike: Types, Budgets & Groupsets Explained",
+      description: "Road, gravel, mountain, city or electric? How to choose the right bike for where you ride and your budget, what frame materials and groupsets mean, and how to get the size right.",
+      body() {
+        const bikeCats = D.categories.filter((c) => c.type === "bike" && TYPE_GUIDE[c.id]);
+        const complete = D.products.filter(isComplete);
+        return {
+          faq: [
+            { q: "Which type of bike should I buy?", a: "Choose by where you'll ride most: road bikes for paved roads, gravel bikes for mixed roads and dirt, mountain bikes for trails, and city bikes for commuting. If you want one bike for almost everything, a gravel bike is the most versatile." },
+            { q: "Is a carbon frame worth it?", a: "Carbon is lighter and absorbs more road buzz than aluminium, which you notice on long rides and climbs. A good aluminium bike with better parts is often better value than a carbon frame with basic parts." },
+            { q: "What does more money buy?", a: "A lighter frame, more gears, hydraulic disc brakes, better wheels and, at the top, electronic shifting. The biggest jump in ride quality usually comes from the frame, wheels and tires." },
+            sizeFaq()
+          ],
+          html: `
+          <p class="lead">Three questions narrow it down fast: where you'll ride, what you want to spend, and how you like to ride. Here's how to answer each one, with the bikes we have for every option.</p>
+          <h2>1. Where will you ride?</h2>
+          ${bikeCats.map((c) => { const items = D.products.filter((p) => p.category === c.id && isComplete(p)); return `<h3>${esc(c.label)} bikes</h3><p>${esc(TYPE_GUIDE[c.id])}</p>${items.length ? `<p><a class="text-link" href="${url(PATHS.cat(c))}">${items.length} ${c.label.toLowerCase()} bike${items.length === 1 ? "" : "s"} from ${peso(cheapestOf(items).price)} ${icon("arrow", 16)}</a></p>` : ""}`; }).join("")}
+          <h2>2. Set your budget</h2>
+          <p>Decide what you want to spend, including a helmet, lights and a lock if you need them. What more money usually buys: a lighter frame, more gears, stronger hydraulic disc brakes, better wheels and, at the top end, electronic shifting.</p>
+          ${BUDGETS.length ? `<ul class="steps-list">${BUDGETS.map((b) => { const n = complete.filter((p) => p.price <= b.max).length; return `<li><a href="${url(PATHS.budget(b))}">Bikes under ${peso(b.max)}</a>: ${n} bike${n === 1 ? "" : "s"}</li>`; }).join("")}</ul>` : ""}
+          <p>The <a href="${url(PATHS.finder)}">Bike Finder</a> ranks every bike for your budget and riding, and explains each pick.</p>
+          <h2>3. Frame materials</h2>
+          <ul class="steps-list">
+            <li><b>Aluminium:</b> light, stiff and affordable. Most entry and mid-level bikes use it.</li>
+            <li><b>Carbon:</b> the lightest, and it absorbs road buzz; it can be shaped for aerodynamics. It costs more.</li>
+            <li><b>Steel:</b> smooth, durable and easy to repair, though heavier. Classic and touring bikes use it.</li>
+            <li><b>Titanium:</b> light, springy and doesn't corrode. A premium choice.</li>
+          </ul>
+          <h2>4. Groupsets explained</h2>
+          <p>The groupset is the bike's gears and brakes. Higher levels shift more smoothly, weigh less and have more gears.</p>
+          <ul class="steps-list">
+            <li><b>Shimano road</b>, from entry to top: Claris (8-speed), Sora (9), Tiagra (10), 105 (12), Ultegra (12), Dura-Ace (12). 105, Ultegra and Dura-Ace also come with electronic Di2 shifting. GRX is Shimano's gravel range.</li>
+            <li><b>Shimano mountain:</b> Cues, Deore, SLX, XT and XTR.</li>
+            <li><b>SRAM road and gravel:</b> Apex, Rival, Force and Red, most of them with wireless AXS electronic shifting.</li>
+            <li><b>SRAM mountain:</b> the Eagle 12-speed range, from SX, NX and GX up to X0 and XX.</li>
+          </ul>
+          <h2>5. Get the right size</h2>
+          <p>A bike that fits matters more than any upgrade. See our <a href="${url(PATHS.sizeGuide)}">bike size guide</a>, or enter your height on any bike's page.</p>`
+        };
+      }
+    }
+  };
+  function viewGuide(id) {
+    const g = GUIDES[id], body = g.body(), path = `guides/${id}/`;
+    const other = Object.entries(GUIDES).filter(([k]) => k !== id);
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="page-head">
+          ${crumbsHTML([{ name: "Guides", path: PATHS.chooseGuide }, { name: g.title }])}
+          <h1>${esc(g.title)}</h1>
+          <p class="page-intro muted">By the ${esc(D.site.name)} team · Updated ${new Date(GUIDE_DATE).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}</p>
+        </div>
+        <article class="guide">
+          ${body.html}
+          ${body.faq.length ? `<h2>Questions and answers</h2>${faqHTML(body.faq)}` : ""}
+          <p class="guide-cta"><a class="btn btn-brand" href="${url(PATHS.finder)}">Find your bike</a> <a class="btn btn-ghost" href="${url(PATHS.bikes)}">Browse all bikes</a></p>
+          ${linkChips("More guides", other.map(([k, x]) => [`guides/${k}/`, x.title]).concat([[PATHS.order, "How to order"]]))}
+        </article>
+      </div>`;
+    setMeta({
+      title: g.seoTitle, description: g.description, type: "article",
+      crumbs: [{ name: "Guides", path: PATHS.chooseGuide }, { name: g.title, path }],
+      schema: [
+        { "@type": "Article", headline: g.seoTitle, description: g.description, url: absUrl(path), mainEntityOfPage: absUrl(path), image: absAsset(DEFAULT_IMAGE),
+          datePublished: GUIDE_DATE, dateModified: GUIDE_DATE, inLanguage: D.site.language, author: { "@id": ORG_ID() }, publisher: { "@id": ORG_ID() } },
+        body.faq.length ? faqLD(body.faq.map((f) => ({ q: f.q, text: f.a }))) : null
+      ]
+    });
+  }
+
+  /* ---------- About ---------- */
+  function viewAbout() {
+    const bikeBrands = BRANDS.filter((b) => b.items.some(isBike)).map((b) => b.name);
+    const partBrands = BRANDS.filter((b) => !b.items.some(isBike)).map((b) => b.name);
+    const contacts = contactListHTML();
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="page-head">
+          ${crumbsHTML([{ name: "About us" }])}
+          <h1>About ${esc(D.site.name)}</h1>
+        </div>
+        <article class="guide">
+          <p class="lead">${esc(D.site.name)} is an online bike shop in the Philippines${bikeBrands.length ? `, selling ${esc(andList(bikeBrands))} bikes${partBrands.length ? ` and ${esc(andList(partBrands))} parts` : ""}` : ""}. Every model has its price in Philippine pesos, full specs, sizes and colours on its own page, so you can compare properly before you buy.</p>
+          <h2>Built around your budget</h2>
+          <p>Tell the <a href="${url(PATHS.finder)}">Bike Finder</a> what you want to spend and where you ride, and it ranks every bike for you and explains why. You can also compare up to three bikes side by side, or browse by <a href="${url(PATHS.bikes)}">type</a>${BRANDS.length ? `, <a href="${url(PATHS.brands)}">brand</a>` : ""} and budget.</p>
+          <h2>How ordering works</h2>
+          <p>There's no online payment. Build your cart and send your order request by chat; a sales rep confirms stock, size, the final price, delivery and payment with you. <a href="${url(PATHS.order)}">See how to order</a>.</p>
+          <h2>Talk to us</h2>
+          ${contacts || `<p>Our Viber ordering line opens soon. You can already build your cart and copy your order details from it.</p>`}
+          ${linkChips("Start shopping", [[PATHS.bikes, "All bikes"], ...(BRANDS.length ? [[PATHS.brands, "Brands"]] : []), [PATHS.chooseGuide, "How to choose a bike"], [PATHS.sizeGuide, "Bike size guide"]])}
+        </article>
+      </div>`;
+    setMeta({
+      title: `About Us: Online Bike Shop in the Philippines`,
+      description: `${D.site.name} is an online bike shop in the Philippines${bikeBrands.length ? ` selling ${andList(bikeBrands.slice(0, 4))} bikes` : ""}. Prices in pesos, full specs, a Bike Finder for your budget, and ordering by chat.`,
+      crumbs: [{ name: "About us", path: PATHS.about }],
+      schema: [{ "@type": "AboutPage", url: absUrl(PATHS.about), name: `About ${D.site.name}`, mainEntity: { "@id": ORG_ID() } }]
+    });
+  }
+
   /* =======================================================
      BIKE FINDER (budget first, then where and how you ride)
      ======================================================= */
@@ -1446,7 +2010,7 @@
     const row = (r, i) => {
       const p = r.p, href = url(PATHS.product(p));
       return `<article class="match-row ${r.inBudget ? "" : "over"}" data-id="${p.id}">
-        <a class="thumb" href="${href}" tabindex="-1" aria-hidden="true">${art(p, 0, false)}</a>
+        <a class="thumb" href="${href}" tabindex="-1" aria-hidden="true">${art(p, 0, false, { sizes: SIZES.thumb })}</a>
         <div><span class="card-meta">${i != null ? `#${i + 1} · ` : ""}${esc(metaLine(p))}</span><h3><a href="${href}">${esc(p.name)}</a></h3>
           <p class="why">${reasonsFor(r, f).map(esc).join(" · ")}</p>
           <div class="match-meter"><i><b style="width:${r.score}%"></b></i>${r.score}% match</div></div>
@@ -1642,7 +2206,7 @@
     box.innerHTML = `${close}
       <div class="cmp-head"><h2>Compare bikes</h2>${many ? `<label class="check"><input type="checkbox" id="cmpDiff" ${cmpDiffOnly ? "checked" : ""}> Show differences only</label>` : `<p class="muted">Add another bike to compare.</p>`}</div>
       <div style="overflow-x:auto"><table class="cmp-table ${cmpDiffOnly && many ? "diff-only" : ""}" id="cmpTable">
-        <thead><tr><th scope="row"><span class="sr-only">Spec</span></th>${items.map((p) => `<td><a class="thumb" href="${url(PATHS.product(p))}" data-action="close-all" tabindex="-1" aria-hidden="true">${art(p, 0, false)}</a><a href="${url(PATHS.product(p))}" data-action="close-all"><b>${esc(p.name)}</b></a><span class="card-meta">${esc(metaLine(p))}</span></td>`).join("")}</tr></thead>
+        <thead><tr><th scope="row"><span class="sr-only">Spec</span></th>${items.map((p) => `<td><a class="thumb" href="${url(PATHS.product(p))}" data-action="close-all" tabindex="-1" aria-hidden="true">${art(p, 0, false, { sizes: SIZES.thumb })}</a><a href="${url(PATHS.product(p))}" data-action="close-all"><b>${esc(p.name)}</b></a><span class="card-meta">${esc(metaLine(p))}</span></td>`).join("")}</tr></thead>
         <tbody>
           ${row("Price", items.map((p) => peso(p.price) + (onSale(p) ? ` (was ${peso(p.compareAt)})` : "")), (i) => items[i].price === lowest)}
           ${items.some((p) => p.brand) ? row("Brand", items.map((p) => p.brand)) : ""}
@@ -1682,7 +2246,7 @@
   }
   function renderSearch(text = "") {
     const box = $("#searchResults");
-    const hitRow = (p) => `<a class="search-hit" href="${url(PATHS.product(p))}" data-action="close-all"><span class="thumb">${art(p, 0, false)}</span><span><strong>${esc(p.name)}</strong><small>${esc(metaLine(p))}</small></span><span class="price">${peso(p.price)}</span></a>`;
+    const hitRow = (p) => `<a class="search-hit" href="${url(PATHS.product(p))}" data-action="close-all"><span class="thumb">${art(p, 0, false, { sizes: SIZES.thumb })}</span><span><strong>${esc(p.name)}</strong><small>${esc(metaLine(p))}</small></span><span class="price">${peso(p.price)}</span></a>`;
     const browse = `<div class="chip-list">${D.categories.map((c) => `<a class="chip" href="${url(PATHS.cat(c))}" data-action="close-all">${esc(c.type === "bike" ? c.label + " bikes" : c.label)}</a>`).join("")}<a class="chip" href="${url(PATHS.sale)}" data-action="close-all">Sale</a></div>`;
     if (!text.trim()) {
       box.innerHTML = `<h4>Browse</h4>${browse}<h4>Shopping on a budget?</h4><p class="muted">Type an amount, like <b>50k</b> or <b>road 80000</b>, to see what fits.</p>`;
@@ -1795,7 +2359,7 @@
       }
       case "photo": {
         const sel = selOf(el), p = byId(sel.id), u = photosOf(p, sel.color)[+el.dataset.i];
-        if (u) $("#pdpArt").innerHTML = `<img src="${esc(u)}" alt="${esc(p.name)}" decoding="async">`;
+        if (u) $("#pdpArt").innerHTML = photoTag(u, `${p.name}, photo ${+el.dataset.i + 1}`, { sizes: SIZES.hero, eager: true });
         $$(".thumb", el.parentElement).forEach((b) => b.classList.toggle("on", b === el));
         break;
       }
@@ -1938,6 +2502,12 @@
     if (!a) viewHome();
     else if ((a === "bikes" || (a === "parts" && HAS_PARTS)) && segs.length === 1) viewShop(a);
     else if ((a === "bikes" || a === "parts") && segs.length === 2 && catOf(b) && catOf(b).type === a.slice(0, -1)) viewShop(b);
+    else if (a === "bikes" && segs.length === 2 && budgetOf(b)) viewShop("budget:" + b);
+    else if (a === "bikes" && segs.length === 2 && b === "framesets" && HAS_FRAMESETS) viewShop("framesets");
+    else if (a === "brands" && segs.length === 1 && BRANDS.length) viewBrands();
+    else if (a === "brands" && segs.length === 2 && brandOf(b)) viewShop("brand:" + b);
+    else if (a === "guides" && segs.length === 2 && GUIDES[b]) viewGuide(b);
+    else if (a === "about" && segs.length === 1) viewAbout();
     else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
     else if (a === "bike-finder" && segs.length === 1) viewFinder();
     else if (a === "rewards" && segs.length === 1) viewRewards();
@@ -1982,12 +2552,32 @@
   function buildMega() {
     const tile = (c) => {
       const sample = D.products.find((p) => p.category === c.id);
-      return `<a class="mega-tile" href="${url(PATHS.cat(c))}">${sample ? art(sample, 0, false) : ""}<strong>${esc(c.label)}</strong><span>${esc(c.blurb)}</span></a>`;
+      return `<a class="mega-tile" href="${url(PATHS.cat(c))}">${sample ? art(sample, 0, false, { sizes: SIZES.tile }) : ""}<strong>${esc(c.label)}</strong><span>${esc(c.blurb)}</span></a>`;
     };
+    const bikeBrands = BRANDS.filter((b) => b.items.some(isBike));
     $("#megaBikes").innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "bike").map(tile).join("")}
-      <a class="mega-tile finder-tile" href="${url(PATHS.finder)}"><strong>Not sure which?</strong><span>Tell us your budget and we'll pick for you.</span></a></div>`;
+      <a class="mega-tile finder-tile" href="${url(PATHS.finder)}"><strong>Not sure which?</strong><span>Tell us your budget and we'll pick for you.</span></a></div>
+      ${bikeBrands.length || BUDGETS.length ? `<div class="mega-links">
+        ${bikeBrands.length ? `<div><strong>Brands</strong>${bikeBrands.map((b) => `<a href="${url(PATHS.brand(b))}">${esc(b.name)}</a>`).join("")}</div>` : ""}
+        ${BUDGETS.length ? `<div><strong>By budget</strong>${BUDGETS.map((b) => `<a href="${url(PATHS.budget(b))}">Under ${pesoK(b.max)}</a>`).join("")}${HAS_FRAMESETS ? `<a href="${url(PATHS.framesets)}">Framesets</a>` : ""}</div>` : ""}
+      </div>` : ""}`;
     const parts = $("#megaParts");
     if (parts) parts.innerHTML = `<div class="mega-inner">${D.categories.filter((c) => c.type === "part").map(tile).join("")}</div>`;
+  }
+
+  function buildFooter() {
+    const link = (path, label) => `<a href="${url(path)}">${esc(label)}</a>`;
+    const shop = $("#footShop");
+    if (shop) shop.innerHTML = `<h2>Shop</h2>${link(PATHS.bikes, "All bikes")}${D.categories.filter((c) => c.type === "bike").map((c) => link(PATHS.cat(c), `${c.label} bikes`)).join("")}${HAS_FRAMESETS ? link(PATHS.framesets, "Framesets") : ""}${HAS_PARTS ? link(PATHS.parts, "Parts & Gear") : ""}${link(PATHS.sale, "Sale")}${link(PATHS.finder, "Bike Finder")}`;
+    const brands = $("#footBrands");
+    if (brands) {
+      if (BRANDS.length) brands.innerHTML = `<h2>Brands</h2>${BRANDS.slice(0, 8).map((b) => link(PATHS.brand(b), b.name)).join("")}${BRANDS.length > 1 ? link(PATHS.brands, "All brands") : ""}${BUDGETS.slice(0, 4).map((b) => link(PATHS.budget(b), `Bikes under ${pesoK(b.max)}`)).join("")}`;
+      else brands.remove();
+    }
+    const help = $("#footHelp");
+    if (help) help.innerHTML = `<h2>Help</h2>${link(PATHS.order, "How to order")}${link(PATHS.sizeGuide, "Bike size guide")}${link(PATHS.chooseGuide, "How to choose a bike")}${link(PATHS.about, "About us")}`;
+    const legal = $(".footer-legal");
+    if (legal) legal.innerHTML = `© <span id="year">${YEAR}</span> ${esc(D.site.name)}. ${CATALOG ? "Prices in Philippine pesos. Product names and logos belong to their brands." : "Product images and inventory are placeholders."}`;
   }
 
   // Header and footer: draw icons, and point links at the right base address
@@ -2000,9 +2590,42 @@
   $("#promoThreshold").textContent = peso(D.freeShippingThreshold);
   $("#year").textContent = new Date().getFullYear();
   buildMega();
+  buildFooter();
   renderXP();
   renderCartCount();
-  route();
+  // The first render keeps the elements the build already saved in the page and only changes
+  // what differs (cart, XP, favourites...). Redrawing everything would make the browser paint the
+  // main photo a second time once the scripts arrive, which is what Google times as the page's
+  // load (LCP). Later page changes redraw normally.
+  function patchChildren(a, b) {
+    const olds = [...a.childNodes], news = [...b.childNodes];
+    for (let i = 0; i < Math.max(olds.length, news.length); i++) {
+      const x = olds[i], y = news[i];
+      if (!y) { x.remove(); continue; }
+      if (!x) { a.appendChild(y); continue; }
+      if (x.isEqualNode(y)) continue;
+      if (x.nodeType === 1 && y.nodeType === 1 && x.tagName === y.tagName && x.tagName !== "SVG" && x.namespaceURI === y.namespaceURI) {
+        for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+        for (const at of [...y.attributes]) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+        patchChildren(x, y);
+      } else a.replaceChild(y, x);
+    }
+  }
+  function hydrate(run) {
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+    if (PRERENDER || MODE !== "path" || !desc || !app.firstElementChild) return run();
+    Object.defineProperty(Element.prototype, "innerHTML", {
+      configurable: true, get: desc.get,
+      set(html) {
+        if (!app.contains(this)) return desc.set.call(this, html);
+        const t = document.createElement("template");
+        t.innerHTML = html;
+        patchChildren(this, t.content);
+      }
+    });
+    try { run(); } finally { Object.defineProperty(Element.prototype, "innerHTML", desc); }
+  }
+  hydrate(route);
 
   // Used by the build script to list every page and draw social images
   if (PRERENDER) {
@@ -2013,11 +2636,17 @@
         { path: PATHS.finder, priority: "0.9" },
         ...D.categories.map((c) => ({ path: PATHS.cat(c), priority: "0.8" })),
         { path: PATHS.sale, priority: "0.7" },
-        ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7" })),
+        ...(BRANDS.length ? [{ path: PATHS.brands, priority: "0.7" }] : []),
+        ...BRANDS.map((b) => ({ path: PATHS.brand(b), priority: "0.8" })),
+        ...BUDGETS.map((b) => ({ path: PATHS.budget(b), priority: "0.8" })),
+        ...(HAS_FRAMESETS ? [{ path: PATHS.framesets, priority: "0.7" }] : []),
+        ...Object.keys(GUIDES).map((k) => ({ path: `guides/${k}/`, priority: "0.6" })),
+        { path: PATHS.about, priority: "0.5" },
+        ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7", images: [...new Set(colorsOf(p).flatMap((c, i) => photosOf(p, i)).concat(photosOf(p, 0)))].slice(0, 10).map(bigPhoto), title: p.name })),
         // One page per SKU (shared on Facebook); they point search engines at their model page
         ...[...skuIndex.keys()].map((k) => ({ path: `products/${k}/`, variant: true })),
         { path: PATHS.order, priority: "0.6" },
-        { path: PATHS.rewards, priority: "0.4" },
+        { path: PATHS.rewards, noindex: true },
         { path: PATHS.favourites, noindex: true }
       ],
       brandArt: bikeSVG("#3c78c6", "road"),

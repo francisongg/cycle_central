@@ -67,18 +67,19 @@
         <a href="./" data-path="" class="logo logo-footer" aria-label="Cycle Central home"><img src="assets/logo-light.svg" alt="Cycle Central" width="188" height="60" /></a>
         <p>Fresh rides, fast service, built around the riding community. Bikes, parts and gear for every kind of rider in the Philippines.</p>
       </div>
-      <div>
-        <h4>Shop</h4>
+      <div id="footShop">
+        <h2>Shop</h2>
         <a href="bikes/" data-path="bikes/">Bikes</a><a href="parts/" data-path="parts/">Parts & Gear</a><a href="sale/" data-path="sale/">Sale</a><a href="bike-finder/" data-path="bike-finder/">Bike Finder</a>
       </div>
-      <div>
-        <h4>Rider Club</h4>
-        <a href="rewards/" data-path="rewards/">Rewards & Badges</a>
-        <button class="link-btn" data-action="open-spin">Daily Spin</button>
+      <div id="footBrands"></div>
+      <div id="footHelp">
+        <h2>Help</h2>
+        <a href="how-to-order/" data-path="how-to-order/">How to order</a>
       </div>
       <div>
-        <h4>Help</h4>
-        <a href="how-to-order/" data-path="how-to-order/">How to order</a><span class="footer-soon">Shipping info (coming soon)</span><span class="footer-soon">Returns (coming soon)</span>
+        <h2>Rider Club</h2>
+        <a href="rewards/" data-path="rewards/">Rewards & Badges</a>
+        <button class="link-btn" data-action="open-spin">Daily Spin</button>
       </div>
     </div>
     <p class="footer-legal">© <span id="year"></span> Cycle Central. Product images and inventory are placeholders.</p>
@@ -87,12 +88,12 @@
   <!-- Panels -->
   <div class="overlay" id="overlay" data-action="close-all"></div>
 
-  <aside class="drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Cart">
+  <div class="drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Cart">
     <div class="drawer-head"><h3>Your cart</h3><button class="icon-btn" data-action="close-all" aria-label="Close"><span data-icon="close"></span></button></div>
     <div class="ship-meter" id="shipMeter"></div>
     <div class="drawer-body" id="cartBody"></div>
     <div class="drawer-foot" id="cartFoot"></div>
-  </aside>
+  </div>
 
   <div class="search-panel" id="searchPanel" role="dialog" aria-modal="true" aria-label="Search">
     <div class="search-inner">

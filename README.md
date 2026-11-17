@@ -41,18 +41,35 @@ This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):
 - **Vibe** (minimalist, innovative, fast): clean cream surfaces, italic headings like the wordmark, and the logo's triangle mosaic used as a light pattern.
 
 ## SEO
-What the build and app do for search engines and link previews:
-- **One HTML file per page** (`scripts/build.mjs` renders each page with headless Chromium), so the full text, headings and links are in the page source.
-- **Unique title and description** for every page, plus a **canonical link**, **Open Graph** and **Twitter card** tags.
-- **Structured data** (schema.org JSON-LD): `OnlineStore` and `WebSite` on every page, `BreadcrumbList` on listing and product pages, and `Product` with price, currency, stock and sale price on product pages. Ratings are left out of structured data until they come from real reviews.
-- **Share images**: a 1200×630 image for every product (`/og/products/<slug>.png`) and one for the site (`/assets/og-image.png`).
-- **`sitemap.xml`** and **`robots.txt`**, a real **404 page** (marked `noindex`), and `noindex` on the personal Favourites page.
-- **Speed**: fonts are self-hosted and the two main ones are preloaded, scripts are deferred, and there are no third-party requests.
-- **Icons**: SVG and PNG favicons, an Apple touch icon and a web app manifest.
+What the build and app do for search engines, AI search and link previews:
+
+**Pages that match what people search**
+- **Product pages** are titled "<Model> Price in the Philippines", with a unique description (price, type, sizes, colours, stock), the full spec table, answers to common questions (price, sizes and colours, stock, how to order) and links to the brand, type, budget and guide pages.
+- **Brand price lists** (`/brands/<brand>/`, e.g. "Trek Bikes Price List Philippines 2026") with a short factual note on the brand, a price table, stock and answers. `/brands/` lists every brand.
+- **Budget pages** (`/bikes/under-50k/` etc.): "Best Bikes Under ₱50,000 in the Philippines", best-equipped first, with the best bike of each type at that budget. A page is only made when it has at least 3 bikes and differs from the one below it.
+- **Type pages** (`/bikes/road/` ...) and **Framesets** (`/bikes/framesets/`) with a price table, answers and links.
+- **Guides**: a bike size guide (`/guides/bike-size-guide/`, height charts in cm and feet, inseam formulas) and how to choose a bike (`/guides/how-to-choose-a-bike/`: types, budgets, frame materials, groupsets). **About us** at `/about/`.
+- Every page is linked from the menu, footer, home page or a related page, so nothing is orphaned.
+
+**Technical**
+- **One HTML file per page** (`scripts/build.mjs` renders each page with headless Chromium), so the full text, headings and links are in the page source. On first load the app keeps that HTML and only updates what's personal (cart, XP), so the main photo isn't painted twice.
+- **Titles** fit Google's ~65 characters (" | Cycle Central" is added when there's room), **descriptions** stay under 160, with a **canonical link**, **Open Graph** and **Twitter card** tags. SKU pages (`/products/<sku>/`) point Google at their model page but keep their own address for Facebook shares.
+- **Structured data** (schema.org JSON-LD): `OnlineStore` (with your social pages, contact and return policy once set) and `WebSite` on every page; `BreadcrumbList`; product pages use `ProductGroup` with one `Product` + `Offer` per SKU (price, sale price, stock, condition), plus `FAQPage`; listing pages use `CollectionPage` + `ItemList` + `FAQPage`; guides use `Article`. Ratings are left out until they come from real reviews.
+- **Photos** are downloaded from Cycle Beast at build time and served from this site as WebP in three sizes (`img/p/`), with `srcset`, `width` and `height` (no layout shift). The main product photo loads first; the rest lazily. Each colour gets a 1200×630 share image (`og/products/`).
+- **`sitemap.xml`** lists every indexable page with its photos (image sitemap) and a `lastmod` that only changes when that page's content changes (tracked in `.cache/seo-state.json`, which GitHub keeps between runs). **`robots.txt`** allows everything. The 404 page, Favourites and Rider Club are `noindex`.
+- **IndexNow**: after each deploy, `scripts/indexnow.mjs` tells Bing (which also feeds ChatGPT search and Copilot), Yandex and others which pages changed. Google reads the sitemap instead.
+- **Shopping feed**: `feeds/products.xml` (one item per SKU) for Google Merchant Center free listings, Bing Merchant Center and Facebook/Instagram shops (Meta Commerce Manager).
+- **Speed and accessibility** (Lighthouse, mobile): performance 92–96, accessibility, best practices and SEO 100. Fonts are self-hosted and preloaded, scripts deferred, no third-party requests.
 
 The build stops with an error if any page is missing a title, description, canonical link, a single H1 or valid structured data, or if two pages share a title.
 
-**Where to edit the words**: `js/data.js` holds the site name and description (`site`), the listing page titles, descriptions and intro text (`pages`), each category's `seoTitle` and `intro`, and each product's `description`. The live address comes from GitHub Pages during deployment (`SITE_URL`/`BASE_PATH`), falling back to `site.url`.
+**Settings in `js/data.js`** (each one is used only once it's filled in):
+- `site.social`: your Facebook, Instagram, TikTok ... page addresses (helps Google connect the site to your brand).
+- `site.verification`: Google Search Console / Bing Webmaster Tools "HTML tag" codes (not needed if you verify by DNS).
+- `policies`: `returnDays`, `returnFees`, `deliveryDays`, `warranty`. Google shows shops with a stated return policy and delivery time more prominently, and Merchant Center needs a return policy.
+- `contact`: Viber number, email and so on, also used in the structured data.
+
+**Where to edit the words**: `js/data.js` holds the site name and description (`site`), the listing page titles, descriptions and intro text (`pages`), each category's `seoTitle`, `intro` and `metaDescription`, and the placeholder products. Brand notes and the guides are in `js/app.js` (`BRAND_INFO`, `GUIDES`). The live address comes from GitHub Pages during deployment (`SITE_URL`/`BASE_PATH`), falling back to `site.url`.
 
 ## Bikes from Cycle Beast
 The bikes, prices and stock come from Cycle Beast's catalog feed:
@@ -83,6 +100,7 @@ GET https://cycle-beast.vercel.app/api/feed/cycle-central?key=<CATALOG_FEED_KEY>
 - Only these fields are copied, so anything else in the feed never reaches the public site.
 - If the key is set but the feed can't be read (wrong key, Cycle Beast down, not JSON, no bikes), the build stops and the site that's already live stays up. The key is never printed.
 - Each run's summary on GitHub (Actions → the run) lists every imported model with its type, price, SKUs, stock and photo count, plus anything to check.
+- Photos are downloaded once and kept in `.cache/img` between runs (see SEO above); a photo that can't be downloaded keeps its original address and is listed in the run summary.
 - Parts & Gear shows the parts found in the feed. When the feed has none, that section is hidden. A part sold in several sizes or colours (like a tire) is picked by size, the same way as a bike.
 
 Test the import locally with the sample feed: `CATALOG_FEED_FILE=scripts/fixtures/sample-feed.json npm run build`.

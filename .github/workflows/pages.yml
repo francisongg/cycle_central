@@ -38,6 +38,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - id: pages
         uses: actions/configure-pages@v5
+      # Resized product photos and each page's last-changed date, kept between runs so hourly
+      # builds only download new photos and the sitemap's dates stay accurate
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache
+          key: site-cache-${{ github.run_id }}
+          restore-keys: site-cache-
       - name: Build site
         run: npm run build
         env:
@@ -50,8 +58,18 @@ jobs:
           # the build stops and the site that's already live stays up.
           CATALOG_FEED_KEY: ${{ secrets.CATALOG_FEED_KEY }}
           CATALOG_FEED_URL: ${{ vars.CATALOG_FEED_URL }}
+      - name: Save build cache
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: site-cache-${{ hashFiles('.cache/seo-state.json', '.cache/img/*.json') }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
+      # Tell Bing (and ChatGPT search, Copilot, Yandex) which pages changed; never fails the deploy
+      - name: Notify search engines (IndexNow)
+        continue-on-error: true
+        run: node scripts/indexnow.mjs

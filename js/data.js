@@ -35,7 +35,24 @@ window.CC_DATA = {
     description: "Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Set your budget, compare specs side by side and find the right bike.",
     locale: "en_PH",
     language: "en-PH",
-    currency: "PHP"
+    currency: "PHP",
+    alternateName: "cyclecentral.ph",
+    // Your public pages (Facebook, Instagram, TikTok, YouTube ...). Google uses these to
+    // connect the site to your brand, e.g. ["https://www.facebook.com/cyclecentralph"]
+    social: [],
+    // Codes from Google Search Console and Bing Webmaster Tools ("HTML tag" method: the
+    // content="..." value only). Not needed if you verify with a DNS record instead.
+    verification: { google: "", bing: "" }
+  },
+
+  // Store policies. Each one shows on the site and in Google results only once it's filled in,
+  // so nothing is promised that isn't your policy. Google shows shops with a clear return
+  // policy and delivery time more prominently.
+  policies: {
+    returnDays: null,     // days to return an item, e.g. 7. Use 0 if you don't accept returns
+    returnFees: null,     // "free" (you pay return shipping) or "customer" (the customer pays)
+    deliveryDays: null,   // working days from confirming an order to delivery, e.g. [2, 7]
+    warranty: ""          // e.g. "Manufacturer warranty on frames and components"
   },
 
   // How customers reach you to order. Leave a value empty ("") to hide it on the site.
@@ -78,7 +95,7 @@ window.CC_DATA = {
       metaDescription: "Tell Cycle Central your budget and where you ride. The Bike Finder ranks road, gravel, mountain, city and electric bikes for you and explains each pick."
     },
     order: {
-      seoTitle: "How to Order",
+      seoTitle: "How to Order a Bike Online: Order by Chat, No Online Payment",
       intro: "No online payment needed. Build your cart, send us your order request in one tap, and a sales rep confirms the details with you.",
       metaDescription: "How to buy a bike from Cycle Central: choose your bike, send an order request from your cart, and our sales team confirms stock, size, price and delivery with you."
     },
@@ -91,34 +108,44 @@ window.CC_DATA = {
   categories: [
     { id: "road",     label: "Road",     type: "bike", blurb: "Built for speed on tarmac.",
       singular: "Road Bike", seoTitle: "Road Bikes for Sale in the Philippines",
-      intro: "Road bikes are built for speed and efficiency on paved roads, from weekend group rides to long climbs. Choose from aero carbon race bikes to comfortable endurance bikes." },
+      intro: "Road bikes are built for speed and efficiency on paved roads, from weekend group rides to long climbs. Choose from aero carbon race bikes to comfortable endurance bikes.",
+      metaDescription: "Road bikes for sale in the Philippines: aero, race and endurance road bikes with prices in pesos, full specs and sizes. Compare and order by chat." },
     { id: "gravel",   label: "Gravel",   type: "bike", blurb: "Pavement ends. Fun doesn't.",
       singular: "Gravel Bike", seoTitle: "Gravel Bikes for Sale in the Philippines",
-      intro: "Gravel bikes handle tarmac, dirt roads and rough backroads on one bike, with wider tires and stable handling for long days out." },
+      intro: "Gravel bikes handle tarmac, dirt roads and rough backroads on one bike, with wider tires and stable handling for long days out.",
+      metaDescription: "Gravel bikes for sale in the Philippines: drop-bar bikes with wide tires for tarmac, dirt and backroads. Prices in pesos, full specs and sizes." },
     { id: "mountain", label: "Mountain", type: "bike", blurb: "Trails, roots and rock gardens.",
       singular: "Mountain Bike", seoTitle: "Mountain Bikes (MTB) for Sale in the Philippines",
-      intro: "Mountain bikes for trail riding, cross-country and descents, with hardtail and full-suspension options." },
+      intro: "Mountain bikes for trail riding, cross-country and descents, with hardtail and full-suspension options.",
+      metaDescription: "Mountain bikes (MTB) for sale in the Philippines: hardtail and full-suspension trail bikes with prices in pesos, full specs and sizes." },
     { id: "city",     label: "City",     type: "bike", blurb: "Commute in comfort and style.",
       singular: "City Bike", seoTitle: "City & Commuter Bikes for Sale in the Philippines",
-      intro: "City and commuter bikes for daily rides around town, with upright riding positions and practical extras like fenders and racks." },
+      intro: "City and commuter bikes for daily rides around town, with upright riding positions and practical extras like fenders and racks.",
+      metaDescription: "City, commuter and hybrid bikes for sale in the Philippines, with upright riding positions and practical extras. Prices in pesos, specs and sizes." },
     { id: "electric", label: "Electric", type: "bike", blurb: "Go further with a boost.",
       singular: "Electric Bike", seoTitle: "Electric Bikes (E-Bikes) for Sale in the Philippines",
-      intro: "Electric bikes with pedal assist that make commutes easier and let you ride further on roads and trails." },
+      intro: "Electric bikes with pedal assist that make commutes easier and let you ride further on roads and trails.",
+      metaDescription: "Electric bikes (e-bikes) for sale in the Philippines: pedal-assist road, city and mountain e-bikes with motor, battery and range specs. Prices in pesos." },
     { id: "folding",  label: "Folding",  type: "bike", blurb: "Small wheels, packs down small.",
       singular: "Folding Bike", seoTitle: "Folding Bikes for Sale in the Philippines",
-      intro: "Folding bikes fold down to fit in a car, a condo or on the train, so the ride can start wherever you are." },
+      intro: "Folding bikes fold down to fit in a car, a condo or on the train, so the ride can start wherever you are.",
+      metaDescription: "Folding bikes for sale in the Philippines that fit in a car, condo or train. Prices in pesos, full specs, weights and folded sizes." },
     { id: "other",    label: "Other",    type: "bike", blurb: "More bikes from our range.",
       singular: "Bike", seoTitle: "More Bikes",
-      intro: "Bikes from our range that don't fit the other types." },
+      intro: "Bikes from our range that don't fit the other types.",
+      metaDescription: "More bikes from the Cycle Central range, with prices in Philippine pesos, full specs, sizes and colours." },
     { id: "components", label: "Components", type: "part", blurb: "Drivetrains, brakes, cockpits.",
       singular: "Bike Component", seoTitle: "Bike Components: Groupsets, Brakes & Handlebars",
-      intro: "Groupsets, brakes, handlebars and other bike components for upgrades and repairs." },
+      intro: "Groupsets, brakes, handlebars and other bike components for upgrades and repairs.",
+      metaDescription: "Bike components in the Philippines: groupsets, brakes, handlebars and other upgrades and replacement parts, with prices in pesos." },
     { id: "wheels",   label: "Wheels & Tires", type: "part", blurb: "Roll faster, grip harder.",
-      singular: "Wheels & Tires", seoTitle: "Bike Wheels & Tires",
-      intro: "Wheelsets and tires for road, gravel and trail riding, including tubeless options." },
+      singular: "Wheels & Tires", seoTitle: "Bike Tires & Wheels Philippines: Road, Gravel & MTB Tires",
+      intro: "Wheelsets and tires for road, gravel and trail riding, including tubeless options.",
+      metaDescription: "Bike tires and wheels in the Philippines: road, gravel and mountain bike tires and wheelsets, including tubeless options. Prices in pesos." },
     { id: "gear",     label: "Gear & Apparel", type: "part", blurb: "Helmets, kits and accessories.",
       singular: "Cycling Gear", seoTitle: "Cycling Gear & Accessories",
-      intro: "Helmets, bike computers, lights, bottles and other cycling gear and accessories." }
+      intro: "Helmets, bike computers, lights, bottles and other cycling gear and accessories.",
+      metaDescription: "Cycling gear and accessories in the Philippines: helmets, bike computers, lights, bottles and more, with prices in pesos." }
   ],
 
   products: [
