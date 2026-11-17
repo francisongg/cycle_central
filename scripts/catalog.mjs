@@ -30,9 +30,8 @@ export async function loadCatalog({ categories, env = process.env }) {
     source = `file ${env.CATALOG_FEED_FILE}`;
   } else if (env.CATALOG_FEED_KEY) {
     const base = env.CATALOG_FEED_URL || DEFAULT_FEED_URL;
-    // Secrets pasted with a trailing line break, spaces or quotes would never match
-    const key = String(env.CATALOG_FEED_KEY).trim().replace(/^(["'])(.*)\1$/s, "$2").trim();
-    raw = await fetchFeed(base, key);
+    const { key, shape } = cleanKey(env.CATALOG_FEED_KEY);
+    raw = await fetchFeed(base, key, shape);
     source = base;
   } else {
     return null;
@@ -42,7 +41,24 @@ export async function loadCatalog({ categories, env = process.env }) {
   return { ...normalize(rows, categories, source.startsWith("http") ? new URL(source).origin : null), source };
 }
 
-async function fetchFeed(base, key) {
+// The secret should be just the key. Accept the common paste mistakes too: spaces, line breaks
+// or quotes around it, "CATALOG_FEED_KEY=...", or the whole feed address with ?key=...
+export function cleanKey(raw) {
+  let k = String(raw ?? "").trim().replace(/^(["'])(.*)\1$/s, "$2").trim();
+  let shape = "plain key";
+  if (/^https?:\/\//i.test(k)) {
+    try { const v = new URL(k).searchParams.get("key"); if (v) { k = v.trim(); shape = "feed address, key taken from ?key="; } else shape = "an address without ?key="; } catch { shape = "an address that couldn't be read"; }
+  } else if (/^[A-Z][A-Z0-9_]*\s*=/.test(k)) {
+    k = k.replace(/^[A-Z][A-Z0-9_]*\s*=\s*/, "").trim().replace(/^(["'])(.*)\1$/s, "$2").trim();
+    shape = "NAME=value, value used";
+  } else if (/^key=/i.test(k)) {
+    k = k.slice(4).trim(); shape = "key=value, value used";
+  }
+  if (/\s/.test(k)) shape += ", contains spaces or line breaks inside";
+  return { key: k, shape };
+}
+
+async function fetchFeed(base, key, shape = "plain key") {
   const u = new URL(base);
   u.searchParams.set("key", key);
   const shown = `${u.origin}${u.pathname}?key=***`; // never print the key
@@ -58,7 +74,7 @@ async function fetchFeed(base, key) {
         const hint = vercelWall
           ? "Vercel's Deployment Protection is blocking the request before it reaches Cycle Beast. Turn protection off for the production domain, or allow this path, in the Vercel project settings."
           : "Check that the CATALOG_FEED_KEY secret on GitHub exactly matches CATALOG_FEED_KEY in Cycle Beast's Vercel environment variables, and that Cycle Beast was redeployed after the key was set.";
-        throw Object.assign(new Error(`Cycle Beast refused the feed key (HTTP ${res.status}) at ${shown} (key length ${key.length}). Reply: "${said || "(empty)"}". ${hint}`), { final: true });
+        throw Object.assign(new Error(`Cycle Beast refused the feed key (HTTP ${res.status}) at ${shown} (secret read as: ${shape}; key length ${key.length}). Reply: "${said || "(empty)"}". ${hint}`), { final: true });
       }
       if (!res.ok) throw new Error(`Cycle Beast feed returned HTTP ${res.status} at ${shown}`);
       const text = await res.text();
