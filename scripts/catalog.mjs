@@ -210,6 +210,8 @@ const FEED_CATEGORY = [
   ["city", /city|urban|hybrid|commut|comfort|cruiser|fitness|trekking/]
 ];
 
+const GENERIC_PART = /^(parts?|spare parts?|components?|accessor(y|ies)|parts? (and|&) accessor\w*|parts? (and|&) gear|gear|items?|products?|merch\w*|others?)$/;
+const GENERIC_BIKE = /^(bikes?|bicycles?|complete bikes?|units?)$/;
 // Brands that make parts, not bikes
 const PART_BRANDS = [
   ["wheels", /^(michelin|continental|schwalbe|maxxis|pirelli|vittoria|panaracer|kenda|hutchinson|challenge|goodyear|irc|tufo|cst|chaoyang|zipp|enve|dt swiss|mavic|fulcrum|hunt|roval|stan'?s( no ?tubes)?|orange seal)$/],
@@ -261,12 +263,27 @@ function classify({ brand, name, description, highlights, specs, explicit }, cat
   const nm = plain(name), br = plain(brand), prose = plain([description, ...highlights].join(" ")), specText = plain(Object.values(specs).join(" "));
   const bikeSpecs = looksLikeBike(specs);
 
+  // A general feed value ("Part", "Bike") settles bike or part; the rules below pick the exact category
+  let feedSays = null;
   if (explicit) {
-    const e = plain(explicit);
-    if (has(e)) return out(e, "feed category");
-    for (const [id, re] of FEED_CATEGORY) if (has(id) && re.test(e)) return out(id, "feed category");
+    const e = plain(explicit), said = `feed category "${explicit}"`;
+    if (GENERIC_PART.test(e)) feedSays = "part";
+    else if (GENERIC_BIKE.test(e)) feedSays = "bike";
+    else {
+      if (has(e)) return out(e, said);
+      for (const [id, re] of FEED_CATEGORY) if (has(id) && re.test(e)) return out(id, said);
+    }
   }
-  if (!bikeSpecs) {
+  if (feedSays === "part") {
+    const how = `feed category "${explicit}"`;
+    for (const [id, re] of PART_BRANDS) if (has(id) && re.test(br)) return out(id, `${how}, ${brand} makes ${id === "wheels" ? "tires and wheels" : id}`);
+    for (const [id, re] of PART_NAMES) if (has(id) && re.test(nm)) return out(id, `${how}, part name`);
+    if (has("wheels") && (Object.keys(specs).some((k) => TIRE_SPEC.test(k)) || count(prose, /\b(tires?|tyres?)\b/g) >= 1)) return out("wheels", `${how}, tire words`);
+    for (const [id, re] of PART_NAMES) if (has(id) && re.test(prose)) return out(id, `${how}, description`);
+    const parts = categories.filter((c) => c.type === "part").map((c) => c.id);
+    if (parts.length) return out(has("components") ? "components" : parts[0], how);
+  }
+  if (!bikeSpecs && feedSays !== "bike") {
     for (const [id, re] of PART_BRANDS) if (has(id) && re.test(br)) return out(id, `${brand} makes parts`);
     for (const [id, re] of PART_NAMES) if (has(id) && re.test(nm)) return out(id, "part name");
     if (has("wheels") && Object.keys(specs).filter((k) => TIRE_SPEC.test(k)).length >= 2) return out("wheels", "tire specs");
