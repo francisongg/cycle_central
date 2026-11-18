@@ -62,12 +62,9 @@ then write in Markdown (`## Heading`, `- list`, `**bold**`, `[link](/bikes/road/
 Push the file (or add it on GitHub: **Add file → Create new file** in `content/blog/`) and the next deploy publishes it, with its own share image, `BlogPosting` structured data, a place in the sitemap and the RSS feed (`/blog/feed.xml`), and an IndexNow ping. A post dated in the future stays hidden until that day. The blog list is at `/blog/`; the home page shows the latest three.
 
 ## Mailing list
-The signup (footer, home page, blog) works with any email service that gives you a signup form: **Brevo**, **MailerLite**, **Kit**, **Buttondown**, **Mailchimp**... It stays hidden until it's connected:
-1. Create a free account and a signup form (double opt-in is recommended).
-2. In the form's embed/HTML code, copy the `action="..."` address and the email field's `name`.
-3. Put them in `js/data.js` → `newsletter.action` and `newsletter.emailField` (plus any hidden fields as `newsletter.hidden`).
+The signup (footer, home page, blog) stays hidden until it's connected. **Recommended:** collect signups in **Cycle Beast**, so the list sits with your customers. Cycle Beast stores each address with its consent record and links it to the customer, and the owner can download it as a CSV to send newsletters from Brevo or MailerLite. **[docs/mailing-list.md](docs/mailing-list.md)** has the Cycle Beast code (table, signup endpoint, export) and the one setting to switch it on here (`newsletter` in `js/data.js`: `action`, `emailField`, `cors: true`).
 
-Subscribers get the Insider badge (+30 XP). The **privacy notice** (`/privacy/`) covers the mailing list, order requests and what's stored in the browser.
+It also works with any email service's own signup form (Brevo, MailerLite, Kit, Buttondown, Mailchimp) with `cors: false`. Subscribers get the Insider badge (+30 XP). The **privacy notice** (`/privacy/`) covers the mailing list, order requests and what's stored in the browser.
 
 ## Branding
 This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):

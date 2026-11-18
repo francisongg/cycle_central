@@ -807,16 +807,16 @@
         <div class="wrap hero-grid">
           <div class="hero-copy">
             <span class="eyebrow">Find the right bike for your budget</span>
-            <h1 class="hero-title">Online bike shop in the Philippines</h1>
+            <h1 class="hero-title">Your go-to bike shop in the Philippines</h1>
             <p>Set what you want to spend and where you ride. We'll show the best bikes for you, with the specs that matter side by side.</p>
             <ul class="hero-points">
               <li>${icon("check", 16)}${bikes.length} bikes from ${peso(fromPrice)}</li>
               <li>${icon("compare", 16)}Compare specs side by side</li>
               ${BRANDS.length ? `<li>${icon("tag", 16)}${esc(andList(BRANDS.filter((b) => b.items.some(isBike)).slice(0, 3).map((b) => b.name)))}${BRANDS.length > 3 ? " and more" : ""}</li>` : `<li>${icon("truck", 16)}Free shipping over ${peso(D.freeShippingThreshold)}</li>`}
             </ul>
+            <a class="town-cta" href="${url(PATHS.town)}"><span class="town-cta-icon" aria-hidden="true">🏙️</span><span class="town-cta-text"><b>New: Bike Town</b><small>Ride around a 3D town where every building is a shop</small></span>${icon("arrow", 18)}</a>
           </div>
-          <div class="hero-art">${bikeSVG("#3c78c6", "road", { light: true })}
-            <a class="town-cta" href="${url(PATHS.town)}"><span aria-hidden="true">🏙️</span><span><b>New: Bike Town</b><small>Ride around a 3D town where every building is a shop</small></span>${icon("arrow", 18)}</a></div>
+          <div class="hero-art">${bikeSVG("#3c78c6", "road", { light: true })}</div>
         </div>
       </section>
 
@@ -1696,13 +1696,16 @@
   }
 
   /* ---------- Mailing list ---------- */
-  // Works with any email service that gives you a signup form address (Brevo, MailerLite, Kit,
-  // Buttondown, Mailchimp...): set it in js/data.js (newsletter). Hidden until then.
+  // Signups go to Cycle Beast (newsletter.cors: true, see docs/mailing-list.md), or to any email
+  // service's signup form (Brevo, MailerLite, Kit, Buttondown, Mailchimp...). Set it in js/data.js
+  // (newsletter). Hidden until then.
   const NL = D.newsletter || {};
   function newsletterHTML(where) {
     if (!NL.action) return "";
     const id = `nl-${where}`;
-    const hidden = Object.entries(NL.hidden || {}).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("");
+    const hidden = Object.entries(NL.hidden || {}).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")
+      // Cycle Beast also records the page the signup came from, and ignores bots that fill in the hidden "website" box
+      + (NL.cors ? `<input type="hidden" name="source" value="${esc(where)}"><label class="nl-trap" aria-hidden="true">Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>` : "");
     return `<section class="newsletter newsletter-${where}" aria-labelledby="${id}">
       <div class="nl-copy"><span class="nl-icon" aria-hidden="true">📬</span><div><h2 id="${id}">${esc(NL.title || "Get new arrivals and deals by email")}</h2><p>${esc(NL.text || "Unsubscribe anytime.")}</p></div></div>
       <form class="nl-form" action="${esc(NL.action)}" method="post" target="_blank" data-nl>
@@ -1724,14 +1727,30 @@
     const btn = form.querySelector("button");
     btn.disabled = true;
     msg.textContent = "Subscribing…";
-    // The email service doesn't let other sites read its reply, so a sent form counts as success
-    fetch(form.action, { method: "POST", mode: "no-cors", body: new FormData(form) })
-      .then(() => {
-        msg.textContent = "Thanks! Check your inbox to confirm your subscription.";
-        form.classList.add("done");
-        S.newsletter = true; save();
-        award("insider");
-      })
+    const body = new FormData(form);
+    const src = body.get("source");
+    if (src != null) body.set("source", `${location.pathname} (${src})`);
+    const done = (text) => {
+      msg.textContent = text;
+      form.classList.add("done");
+      S.newsletter = true; save();
+      award("insider");
+    };
+    if (NL.cors) {
+      // Cycle Beast answers { ok, error }, so a problem can be shown and fixed
+      fetch(form.action, { method: "POST", body })
+        .then((r) => r.json().catch(() => ({})).then((j) => ({ status: r.status, ...j })))
+        .then((j) => {
+          if (j.ok) return done(NL.thanks || "You're on the list. Thanks for subscribing!");
+          btn.disabled = false;
+          msg.textContent = j.error || "Sorry, that didn't work. Please try again in a moment.";
+        })
+        .catch(() => { btn.disabled = false; msg.textContent = "We couldn't reach our server. Please check your connection and try again."; });
+      return;
+    }
+    // Email services don't let other sites read their reply, so a sent form counts as success
+    fetch(form.action, { method: "POST", mode: "no-cors", body })
+      .then(() => done(NL.thanks || "Thanks! Check your inbox to confirm your subscription."))
       .catch(() => { btn.disabled = false; msg.textContent = ""; form.submit(); });
   });
 

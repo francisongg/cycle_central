@@ -179,7 +179,7 @@ async function main() {
   };
 
   await render(card(brandArt, `<div class="eyebrow">cyclecentral.ph</div>
-    <h1>Online bike shop in the Philippines</h1>
+    <h1>Your go-to bike shop in the Philippines</h1>
     <div class="sub">Road, gravel, mountain, city and electric bikes, plus parts and gear.</div>`), "assets/og-image.png");
   for (const p of products) {
     if (p.hasImage) continue; // real product photos are used directly

@@ -31,7 +31,7 @@ window.CC_DATA = {
   site: {
     name: "Cycle Central",
     url: "https://cyclecentral.ph",
-    tagline: "Online Bike Shop in the Philippines",
+    tagline: "Your Go-To Bike Shop in the Philippines",
     description: "Shop road, gravel, mountain, city and electric bikes, plus parts and gear, at Cycle Central. Set your budget, compare specs side by side and find the right bike.",
     locale: "en_PH",
     language: "en-PH",
@@ -45,14 +45,18 @@ window.CC_DATA = {
     verification: { google: "", bing: "" }
   },
 
-  // Mailing list. Create a free signup form with an email service (Brevo, MailerLite, Kit,
-  // Buttondown, Mailchimp...) and paste its form address here; the signup then appears in the
-  // footer, on the home page and on the blog. Until then it's hidden.
+  // Mailing list. The signup appears in the footer, on the home page and on the blog once
+  // `action` is set; until then it's hidden. See docs/mailing-list.md.
+  //  - Cycle Beast (recommended): action: "https://cycle-beast.vercel.app/api/newsletter/subscribe",
+  //    emailField: "email", cors: true
+  //  - or an email service's signup form (Brevo, MailerLite, Kit, Buttondown, Mailchimp): paste
+  //    the form's action="..." URL and its email field name (Brevo/Mailchimp "EMAIL",
+  //    MailerLite "fields[email]", Kit "email_address", Buttondown "email"), cors: false
   newsletter: {
-    action: "",           // the form's address (its action="..." URL)
-    emailField: "email",  // name of the email field in that form: Brevo/Mailchimp "EMAIL",
-                          // MailerLite "fields[email]", Kit "email_address", Buttondown "email"
-    hidden: {},           // any hidden fields the service's form code includes, as { name: "value" }
+    action: "",
+    emailField: "email",
+    cors: false,          // true for Cycle Beast: it replies, so errors can be shown
+    hidden: {},           // extra hidden fields an email service's form needs, as { name: "value" }
     title: "Get new arrivals, deals and riding tips",
     text: "One email every couple of weeks from Cycle Central. Unsubscribe anytime."
   },
