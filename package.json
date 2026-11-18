@@ -9,7 +9,10 @@
     "preview": "node scripts/preview.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
+    "marked": "18.1.2",
     "playwright": "1.64.0",
-    "sharp": "^0.35.5"
+    "sharp": "0.35.5",
+    "three": "0.186.1"
   }
 }

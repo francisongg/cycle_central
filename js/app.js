@@ -81,7 +81,8 @@
 
   const PATHS = {
     home: "", bikes: "bikes/", parts: "parts/", sale: "sale/", favourites: "favourites/", rewards: "rewards/", finder: "bike-finder/", order: "how-to-order/",
-    brands: "brands/", framesets: "bikes/framesets/", about: "about/", sizeGuide: "guides/bike-size-guide/", chooseGuide: "guides/how-to-choose-a-bike/",
+    brands: "brands/", framesets: "bikes/framesets/", about: "about/", town: "town/", blog: "blog/", privacy: "privacy/",
+    post: (p) => `blog/${p.slug}/`, sizeGuide: "guides/bike-size-guide/", chooseGuide: "guides/how-to-choose-a-bike/",
     cat: (c) => `${c.type === "bike" ? "bikes" : "parts"}/${c.id}/`,
     brand: (b) => `brands/${b.slug}/`,
     budget: (b) => `bikes/${b.slug}/`,
@@ -331,6 +332,7 @@
   const KEY = "cc_state_v1";
   const defaults = {
     xp: 0, cart: [], compare: [], favs: [], badges: [], viewed: [], catsSeen: [],
+    town: { stamps: [], coinDay: "", coins: [], welcomed: false },
     lastSpin: null, codes: [], appliedCode: null, orders: 0, requests: [], customer: { name: "", mobile: "", area: "" },
     finder: { budget: D.finder.defaultBudget, terrain: "", goal: "", level: "", assist: "any" }
   };
@@ -343,6 +345,7 @@
       const s = Object.assign(base, saved);
       s.finder = Object.assign(fresh().finder, saved.finder || {});
       s.customer = Object.assign(fresh().customer, saved.customer || {});
+      s.town = Object.assign(fresh().town, saved.town || {});
       // Forget products that are no longer in the inventory
       const known = (id) => !!byId(id);
       s.cart = s.cart.filter((l) => known(l.id));
@@ -369,7 +372,9 @@
     { id: "first-gear",  icon: "⚙️", name: "First Gear",     desc: "Add something to your cart",     xp: 20 },
     { id: "full-build",  icon: "🔧", name: "Full Build",     desc: "Cart has a bike and 2+ parts",   xp: 80 },
     { id: "free-ship",   icon: "📦", name: "Free Rider",     desc: "Unlock free shipping",           xp: 40 },
-    { id: "podium",      icon: "🥇", name: "Podium Finish",  desc: "Send an order request",          xp: 150 }
+    { id: "podium",      icon: "🥇", name: "Podium Finish",  desc: "Send an order request",          xp: 150 },
+    { id: "town",        icon: "🏙️", name: "Town Explorer",  desc: "Visit every shop in Bike Town",  xp: 100 },
+    { id: "insider",     icon: "📬", name: "Insider",        desc: "Join the mailing list",          xp: 30 }
   ];
 
   function levelIndex(xp = S.xp) {
@@ -384,11 +389,11 @@
     return { pct: ((xp - cur.min) / (next.min - cur.min)) * 100, toNext: next.min - xp, next };
   }
 
-  function addXP(amount, reason) {
+  function addXP(amount, reason, quiet = false) {
     const before = levelIndex();
     S.xp += amount;
     save();
-    toast(`${reason}`, `+${amount} XP`);
+    if (!quiet) toast(`${reason}`, `+${amount} XP`);
     const after = levelIndex();
     renderXP(true);
     if (after > before) {
@@ -810,7 +815,8 @@
               ${BRANDS.length ? `<li>${icon("tag", 16)}${esc(andList(BRANDS.filter((b) => b.items.some(isBike)).slice(0, 3).map((b) => b.name)))}${BRANDS.length > 3 ? " and more" : ""}</li>` : `<li>${icon("truck", 16)}Free shipping over ${peso(D.freeShippingThreshold)}</li>`}
             </ul>
           </div>
-          <div class="hero-art">${bikeSVG("#3c78c6", "road", { light: true })}</div>
+          <div class="hero-art">${bikeSVG("#3c78c6", "road", { light: true })}
+            <a class="town-cta" href="${url(PATHS.town)}"><span aria-hidden="true">🏙️</span><span><b>New: Bike Town</b><small>Ride around a 3D town where every building is a shop</small></span>${icon("arrow", 18)}</a></div>
         </div>
       </section>
 
@@ -889,6 +895,14 @@
           </div>
         </div>
       </section>
+
+      ${BLOG.length ? `<section class="section tight">
+        <div class="wrap">
+          <div class="section-head"><div><h2>From the blog</h2><p>Buying guides, bike care and riding tips.</p></div><a class="text-link" href="${url(PATHS.blog)}">All posts ${icon("arrow", 16)}</a></div>
+          <div class="post-list three">${BLOG.slice(0, 3).map((p) => postCard(p)).join("")}</div>
+        </div>
+      </section>` : ""}
+      ${NL.action ? `<section class="section tight"><div class="wrap">${newsletterHTML("home")}</div></section>` : ""}
 
       <section class="section">
         <div class="wrap about-grid">
@@ -1681,6 +1695,294 @@
     setMeta({ title: pg.seoTitle, description: pg.metaDescription, crumbs: [{ name: "How to order", path: PATHS.order }] });
   }
 
+  /* ---------- Mailing list ---------- */
+  // Works with any email service that gives you a signup form address (Brevo, MailerLite, Kit,
+  // Buttondown, Mailchimp...): set it in js/data.js (newsletter). Hidden until then.
+  const NL = D.newsletter || {};
+  function newsletterHTML(where) {
+    if (!NL.action) return "";
+    const id = `nl-${where}`;
+    const hidden = Object.entries(NL.hidden || {}).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("");
+    return `<section class="newsletter newsletter-${where}" aria-labelledby="${id}">
+      <div class="nl-copy"><span class="nl-icon" aria-hidden="true">📬</span><div><h2 id="${id}">${esc(NL.title || "Get new arrivals and deals by email")}</h2><p>${esc(NL.text || "Unsubscribe anytime.")}</p></div></div>
+      <form class="nl-form" action="${esc(NL.action)}" method="post" target="_blank" data-nl>
+        <div class="nl-row"><label class="sr-only" for="${id}-email">Email address</label>
+          <input id="${id}-email" type="email" name="${esc(NL.emailField || "email")}" required autocomplete="email" placeholder="Your email address">${hidden}
+          <button class="btn btn-brand" type="submit">Subscribe</button></div>
+        <p class="nl-note">By subscribing you agree to get emails from ${esc(D.site.name)}. Unsubscribe anytime. <a href="${url(PATHS.privacy)}">Privacy notice</a></p>
+        <p class="nl-msg" aria-live="polite"></p>
+      </form>
+    </section>`;
+  }
+  document.addEventListener("submit", (e) => {
+    const form = e.target.closest && e.target.closest("form[data-nl]");
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector('input[type="email"]'), msg = form.querySelector(".nl-msg");
+    const email = input.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { msg.textContent = "Please enter a valid email address."; input.focus(); return; }
+    const btn = form.querySelector("button");
+    btn.disabled = true;
+    msg.textContent = "Subscribing…";
+    // The email service doesn't let other sites read its reply, so a sent form counts as success
+    fetch(form.action, { method: "POST", mode: "no-cors", body: new FormData(form) })
+      .then(() => {
+        msg.textContent = "Thanks! Check your inbox to confirm your subscription.";
+        form.classList.add("done");
+        S.newsletter = true; save();
+        award("insider");
+      })
+      .catch(() => { btn.disabled = false; msg.textContent = ""; form.submit(); });
+  });
+
+  /* ---------- Blog ---------- */
+  // Posts are Markdown files in content/blog/ (see scripts/blog.mjs). js/blog.js lists them; each
+  // post's text is in blog-data/<address>.json, and already in the page when it's opened directly.
+  const BLOG = (window.CC_BLOG && window.CC_BLOG.posts) || [];
+  const postOf = (slug) => BLOG.find((p) => p.slug === slug);
+  const POST_HTML = new Map();
+  const POST_COLORS = { road: "#3c78c6", gravel: "#92694b", mountain: "#3f8a5a", city: "#e8742a", electric: "#d99a1e", folding: "#2a9d8f" };
+  const postArt = (p, light = false) => bikeSVG(POST_COLORS[p.category] || "#3c78c6", ["road", "gravel", "mountain", "city", "folding"].includes(p.category) ? p.category : "road", { light });
+  const fmtDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const postMeta = (p) => `<time datetime="${p.date}">${fmtDate(p.date)}</time> · ${p.readMins} min read`;
+  function postCard(p, big = false) {
+    const href = url(PATHS.post(p));
+    return `<article class="post-card ${big ? "big" : ""}" style="--c:${POST_COLORS[p.category] || "#3c78c6"}">
+      <a class="post-card-art" href="${href}" tabindex="-1" aria-hidden="true">${postArt(p)}</a>
+      <div class="post-card-body">
+        ${p.tags.length ? `<p class="post-tags">${p.tags.map(esc).join(" · ")}</p>` : ""}
+        <h2><a href="${href}">${esc(p.title)}</a></h2>
+        <p>${esc(p.description)}</p>
+        <p class="post-meta">${postMeta(p)}</p>
+      </div>
+    </article>`;
+  }
+  function viewBlog() {
+    app.innerHTML = `
+      <div class="wrap blog">
+        <div class="page-head">
+          ${crumbsHTML([{ name: "Blog" }])}
+          <h1>Bike Blog</h1>
+          <p class="page-intro">Buying guides, bike care and riding tips for the Philippines, from the ${esc(D.site.name)} team.</p>
+        </div>
+        ${BLOG.length ? `<div class="post-list">${BLOG.map((p, i) => postCard(p, i === 0)).join("")}</div>` : `<p class="empty">The first posts are on their way.</p>`}
+        ${newsletterHTML("blog")}
+        <p class="blog-rss"><a class="text-link" href="${url("blog/feed.xml")}">${icon("send", 16)}Follow with RSS</a></p>
+      </div>`;
+    setMeta({
+      title: "Bike Blog: Buying Guides, Bike Care & Riding Tips",
+      description: `Bike buying guides, rainy-season care, tubeless tires and riding tips for the Philippines, from the ${D.site.name} team.`,
+      crumbs: [{ name: "Blog", path: PATHS.blog }],
+      schema: [{ "@type": "Blog", "@id": absUrl(PATHS.blog) + "#blog", name: `${D.site.name} Blog`, url: absUrl(PATHS.blog), publisher: { "@id": ORG_ID() },
+        blogPost: BLOG.slice(0, 20).map((p) => ({ "@type": "BlogPosting", headline: p.title, url: absUrl(PATHS.post(p)), datePublished: p.date, dateModified: p.updated })) }]
+    });
+  }
+  // {{products ...}} in a post: live product cards with today's prices
+  function fillPostProducts(root) {
+    $$(".post-products", root).forEach((el) => {
+      const d = el.dataset;
+      let items = D.products.filter((p) => !p.frameset || d.category === "framesets");
+      if (d.category) items = items.filter((p) => p.category === d.category);
+      if (d.brand) items = items.filter((p) => (p.brand || "").toLowerCase() === d.brand.toLowerCase());
+      if (d.max) items = items.filter((p) => p.price <= +d.max);
+      if (d.min) items = items.filter((p) => p.price >= +d.min);
+      if (d.sort === "low") items.sort((a, b) => a.price - b.price);
+      if (d.sort === "high") items.sort((a, b) => b.price - a.price);
+      items = items.slice(0, +d.limit || 4);
+      el.innerHTML = items.length
+        ? `<div class="product-grid post-grid">${items.map((p) => card(p)).join("")}</div>`
+        : `<p class="muted">Nothing in stock for this list right now. <a href="${url(PATHS.bikes)}">See all bikes</a>.</p>`;
+    });
+  }
+  function viewPost(slug) {
+    const p = postOf(slug);
+    if (!p) return viewNotFound();
+    let body = POST_HTML.get(slug);
+    if (body == null) {
+      // opened directly: the text is already in the page
+      const saved = document.querySelector(`.post[data-post="${slug}"] .post-body[data-full="1"]`);
+      if (saved) { body = saved.innerHTML; POST_HTML.set(slug, body); }
+    }
+    if (body == null) {
+      fetch(`${BASE}blog-data/${slug}.json`).then((r) => r.json()).then((d) => {
+        POST_HTML.set(slug, d.html);
+        if (currentPath() === PATHS.post(p)) { viewPost(slug); window.scrollTo(0, 0); }
+      }).catch(() => { const b = $(".post-body"); if (b) b.innerHTML = `<p>This post couldn't load. <a href="${url(PATHS.post(p))}">Try again</a>.</p>`; });
+    }
+    const pageUrl = absUrl(PATHS.post(p));
+    const share = encodeURIComponent(pageUrl), shareText = encodeURIComponent(`${p.title} ${pageUrl}`);
+    const others = BLOG.filter((x) => x !== p).slice(0, 2);
+    app.innerHTML = `
+      <article class="post" data-post="${esc(slug)}" style="--c:${POST_COLORS[p.category] || "#3c78c6"}">
+        <div class="wrap">
+          ${crumbsHTML([{ name: "Blog", path: PATHS.blog }, { name: p.title }], "padding-top:20px")}
+          <header class="post-head">
+            ${p.tags.length ? `<p class="post-tags">${p.tags.map(esc).join(" · ")}</p>` : ""}
+            <h1>${esc(p.title)}</h1>
+            <p class="post-lead">${esc(p.description)}</p>
+            <p class="post-meta">By ${esc(p.author)} · ${postMeta(p)}${p.updated !== p.date ? ` · Updated <time datetime="${p.updated}">${fmtDate(p.updated)}</time>` : ""}</p>
+          </header>
+          <div class="post-art" aria-hidden="true">${postArt(p, true)}</div>
+          <div class="post-body prose" data-full="${body != null ? 1 : 0}">${body != null ? body : `<p class="muted">Loading…</p>`}</div>
+          <div class="post-share"><span>Share this post</span>
+            <a class="btn btn-ghost btn-sm" href="https://www.facebook.com/sharer/sharer.php?u=${share}" target="_blank" rel="noopener">Facebook</a>
+            <a class="btn btn-ghost btn-sm" href="viber://forward?text=${shareText}">Viber</a>
+            <button class="btn btn-ghost btn-sm" data-action="copy-link">${icon("copy", 16)}Copy link</button>
+          </div>
+          ${newsletterHTML("post")}
+          ${others.length ? `<section class="post-more"><h2>More from the blog</h2><div class="post-list">${others.map((x) => postCard(x)).join("")}</div></section>` : ""}
+        </div>
+      </article>`;
+    if (body != null) fillPostProducts(app);
+    setMeta({
+      title: p.title, description: p.description, type: "article",
+      image: absUrl(`og/blog/${p.slug}.png`), imageAlt: p.title,
+      crumbs: [{ name: "Blog", path: PATHS.blog }, { name: p.title, path: PATHS.post(p) }],
+      schema: [{
+        "@type": "BlogPosting", "@id": pageUrl + "#post", headline: p.title, description: p.description, url: pageUrl, mainEntityOfPage: pageUrl,
+        image: absUrl(`og/blog/${p.slug}.png`), datePublished: p.date, dateModified: p.updated, inLanguage: D.site.language,
+        author: p.author === "Cycle Central team" || p.author === `${D.site.name} team` ? { "@id": ORG_ID() } : { "@type": "Person", name: p.author },
+        publisher: { "@id": ORG_ID() }, keywords: p.tags.join(", ") || undefined,
+        isPartOf: { "@id": absUrl(PATHS.blog) + "#blog" }
+      }]
+    });
+  }
+
+  /* ---------- Privacy ---------- */
+  function viewPrivacy() {
+    const C0 = D.contact || {};
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="page-head">${crumbsHTML([{ name: "Privacy notice" }])}<h1>Privacy notice</h1><p class="page-intro muted">Updated ${fmtDate("2026-11-18")}</p></div>
+        <article class="guide">
+          <p class="lead">${esc(D.site.name)} collects as little about you as possible. Here's what we keep, why, and how to reach us.</p>
+          <h2>Stored only in your browser</h2>
+          <p>Your cart, favourites, comparisons, Bike Finder answers, Rider Club XP and badges, and Bike Town progress are saved in your own browser so they're there when you come back. They aren't sent to us. Clearing this site's data in your browser removes them.</p>
+          <h2>When you send an order request</h2>
+          <p>Your order request is sent by you through your chat app (such as Viber) and includes what you typed in: your name, mobile number, area and the items in your cart. We use it only to confirm and deliver your order, and keep it only as long as we need to for that and for our records.</p>
+          <h2>Mailing list</h2>
+          <p>If you subscribe, your email address is kept by our email service so we can send you updates. Every email has an unsubscribe link, and you can ask us to delete your address at any time.</p>
+          <h2>No advertising trackers</h2>
+          <p>This site doesn't use advertising cookies or third-party analytics. Our web host keeps standard server logs, such as IP addresses, for security.</p>
+          <h2>Your rights</h2>
+          <p>Under the Data Privacy Act of 2012 (Republic Act No. 10173), you can ask what personal data we hold about you, have it corrected, or have it deleted. Contact us${C0.email ? ` at <a href="mailto:${esc(C0.email)}">${esc(C0.email)}</a>` : ""} through any of the channels on our <a href="${url(PATHS.order)}">How to order</a> page.</p>
+        </article>
+      </div>`;
+    setMeta({ title: "Privacy Notice", description: `How ${D.site.name} handles your data: what's stored in your browser, order requests by chat, the mailing list, and your rights under the Data Privacy Act.`, crumbs: [{ name: "Privacy notice", path: PATHS.privacy }] });
+  }
+
+  /* ---------- Bike Town (3D) ---------- */
+  // js/town.js draws the town; this builds its list of places from the catalog and hands it the
+  // shop's actions (cart, XP, spin). The page also lists every place as plain links, for search
+  // engines and for browsers without 3D.
+  const TOWN_SHOPS = {
+    road: ["Road Bike Velodrome", "velodrome", "🚴", "#3c78c6"], gravel: ["Gravel Lodge", "lodge", "🏕️", "#92694b"],
+    mountain: ["MTB Basecamp", "basecamp", "⛰️", "#3f8a5a"], city: ["Commuter Station", "station", "🚉", "#e8742a"],
+    electric: ["E-Bike Power Station", "power", "⚡", "#d99a1e"], folding: ["Folding Bike Kiosk", "kiosk", "🧳", "#2a9d8f"],
+    other: ["Bike Barn", "barn", "🚲", "#7b5ea7"], components: ["Parts Workshop", "workshop", "🔧", "#3a4048"],
+    wheels: ["Tire & Wheel Shop", "tires", "🛞", "#4a5058"], gear: ["Gear Shop", "gear", "⛑️", "#d64545"]
+  };
+  function townPlaces() {
+    const out = [];
+    const count = (items) => { const n = nounFor(items); return `${items.length} ${items.length === 1 ? n.one : n.many} from ${pesoK(cheapestOf(items).price)}`; };
+    const coloursOf = (items) => [...new Set(items.flatMap((p) => colorsOf(p).map((c) => c.hex)))].slice(0, 4);
+    for (const c of D.categories) {
+      const t = TOWN_SHOPS[c.id], items = D.products.filter((p) => p.category === c.id && !p.frameset);
+      if (!t || !items.length) continue;
+      out.push({ id: c.id, kind: "shop", group: c.type === "bike" ? "main" : "parts", name: t[0], style: t[1], icon: t[2], color: t[3], colors: coloursOf(items),
+        blurb: c.intro || c.blurb, items, count: count(items), href: PATHS.cat(c), hrefLabel: c.type === "bike" ? `${c.label.toLowerCase()} bikes page` : `${c.label} page` });
+    }
+    const frames = D.products.filter((p) => p.frameset);
+    if (HAS_FRAMESETS) out.push({ id: "framesets", kind: "shop", group: "main", name: "Frame Studio", style: "frames", icon: "📐", color: "#a8323b", colors: coloursOf(frames), blurb: "Frame and fork sets to build your dream bike.", items: frames, count: count(frames), href: PATHS.framesets, hrefLabel: "framesets page" });
+    const sale = D.products.filter(onSale);
+    if (sale.length) out.push({ id: "sale", kind: "shop", group: "main", name: "Sari-sari Sale Stall", sign: "Sale", style: "market", icon: "🏷️", color: "#d64545", blurb: "Bikes, parts and gear with reduced prices.", items: sale, count: count(sale), href: PATHS.sale, hrefLabel: "sale page" });
+    out.push({ id: "bank", kind: "bank", group: "main", name: "Budget Bank", style: "bank", icon: "💰", color: "#b8891a", blurb: "Tell the teller your budget and see the best bikes for it.", href: PATHS.finder, hrefLabel: "Bike Finder" });
+    out.push({ id: "post", kind: "post", group: "main", name: "Order Post Office", sign: "Post Office", style: "post", icon: "📮", color: "#c4392f", blurb: "Send your order request by chat. No online payment needed.", href: PATHS.order, hrefLabel: "How to order" });
+    out.push({ id: "fit", kind: "fit", group: "main", name: "Fit Studio", style: "fit", icon: "📏", color: "#2a9d8f", blurb: "Find your frame size from your height.", href: PATHS.sizeGuide, hrefLabel: "bike size guide" });
+    BRANDS.slice(0, 6).forEach((b) => out.push({ id: "brand-" + b.slug, kind: "shop", group: "brands", name: `${b.name} Showroom`, sign: b.name, style: "showroom", icon: "🏬", color: "#1c2126", colors: coloursOf(b.items),
+      blurb: brandInfo(b) || `Every ${b.name} model we sell.`, items: b.items, count: count(b.items), href: PATHS.brand(b), hrefLabel: `${b.name} price list` }));
+    out.push({ id: "club", kind: "club", group: "landmark-west", name: "Rider Club HQ", sign: "Rider Club", style: "club", icon: "🏆", color: "#3c78c6", blurb: "Your level, badges and Town Pass.", href: PATHS.rewards, hrefLabel: "Rider Club" });
+    out.push({ id: "spin", kind: "spin", group: "landmark-east", name: "Daily Spin Wheel", sign: "Daily Spin", style: "ferris", icon: "🎡", color: "#e8742a", blurb: "Spin once a day for discount codes, free shipping or bonus XP." });
+    return out;
+  }
+  let town = null; // the running 3D town, stopped when you leave the page
+  function townApi(places) {
+    return {
+      places, reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      url, peso, pesoK, icon, card: (p) => card(p),
+      bands: (items) => D.priceBands[items.some(isBike) ? "bike" : "part"].map(([, b]) => b).filter((b) => b != null),
+      finderQuick: D.finder.quick, finderPath: PATHS.finder,
+      bikesUpTo: (max) => D.products.filter((p) => isComplete(p) && !soldOut(p) && p.price <= max).sort((a, b) => b.price - a.price),
+      sizeFor: (cm) => sizeForHeight(cm),
+      level: () => { const i = levelIndex(); return { icon: LEVEL_ICONS[i], name: D.levels[i].name, xp: S.xp, ...levelProgress() }; },
+      cart: () => ({ count: S.cart.reduce((n, l) => n + l.qty, 0), total: cartTotals().total }),
+      openCart: () => { renderCart(); openPanel("#cartDrawer"); },
+      openSpin: () => { renderSpin(); openPanel("#spinModal"); },
+      modalOpen: () => $("#overlay").classList.contains("show"),
+      state: S.town, save, today: today(),
+      stamp(id, name) {
+        if (S.town.stamps.includes(id)) return false;
+        S.town.stamps.push(id);
+        save();
+        addXP(5, `🏷️ Town Pass stamp: ${esc(name)}`);
+        if (places.every((x) => S.town.stamps.includes(x.id))) award("town");
+        return true;
+      },
+      coin: () => addXP(2, "", true)
+    };
+  }
+  function viewTown() {
+    const places = townPlaces();
+    const touchHint = "Tap anywhere to ride there · use the joystick to steer";
+    app.innerHTML = `
+      <section class="town" aria-labelledby="townTitle">
+        <div class="town-stage" id="townStage">
+          <div class="town-loading"><span class="town-spinner" aria-hidden="true"></span><p>Loading Bike Town…</p></div>
+          <div class="town-hud">
+            <div class="town-title"><h1 id="townTitle">Bike Town</h1><p>Ride around. Every building is a shop.</p></div>
+            <div class="town-actions">
+              <button class="town-btn" type="button" data-town="places">${icon("pin", 16)}Places</button>
+              <button class="town-btn" type="button" data-town="pass"><span aria-hidden="true">🏷️</span><span class="sr-only">Town Pass stamps</span> <b data-town-pass>0/${places.length}</b></button>
+              <span class="town-btn town-coin" title="Coins collected today"><span aria-hidden="true">🪙</span><span class="sr-only">Coins today</span> <b data-town-coins>0/20</b></span>
+              <button class="town-btn icon" type="button" data-town="help" aria-label="How to ride">?</button>
+            </div>
+            <div class="town-zoom"><button class="town-btn icon" type="button" data-zoom="in" aria-label="Zoom in">${icon("plus", 16)}</button><button class="town-btn icon" type="button" data-zoom="out" aria-label="Zoom out">${icon("minus", 16)}</button></div>
+            <button class="town-prompt" type="button" hidden></button>
+            <div class="town-joy" aria-hidden="true"><span></span></div>
+            <p class="town-hint"><span class="pointer-fine">Arrow keys or WASD to ride · Enter to go in · click anywhere to ride there</span><span class="pointer-coarse">${touchHint}</span></p>
+          </div>
+        </div>
+        <div class="wrap town-info">
+          <h2>Shops in Bike Town</h2>
+          <p class="page-intro">Bike Town is ${esc(D.site.name)} as a little 3D town. Ride your bike from shop to shop, browse every bike and part, stamp your Town Pass and collect coins for Rider Club XP. Prefer a list? Every shop is here too.</p>
+          <ul class="town-place-cards">${places.map((p) => `<li style="--c:${p.color}">
+            <span class="town-place-icon" aria-hidden="true">${p.icon}</span>
+            <div><h3>${esc(p.name)}</h3><p>${esc(p.count || p.blurb || "")}</p>
+            <div class="town-place-links">${p.href ? `<a class="text-link" href="${url(p.href)}">Open the ${esc(p.hrefLabel || p.name)}</a>` : `<button class="text-link" data-action="open-spin">Spin the wheel</button>`}<button class="text-link town-ride" type="button" data-town-ride="${esc(p.id)}">Ride there ${icon("arrow", 14)}</button></div></div>
+          </li>`).join("")}</ul>
+          <h2>How to play</h2>
+          <ul class="steps-list">
+            <li>Ride with the arrow keys or WASD, or tap anywhere (or on a shop's sign) and your rider goes there.</li>
+            <li>Ride up to a door and press Enter, or tap the button that appears, to go in and shop. Your cart works everywhere.</li>
+            <li>Every shop stamps your Town Pass (+5 XP); visit them all for the Town Explorer badge. ${20} gold coins appear on the streets every day, worth 2 XP each.</li>
+            <li>Spin the Ferris wheel once a day for discount codes, and drop by the Post Office to send your order.</li>
+          </ul>
+        </div>
+      </section>`;
+    document.body.classList.add("in-town");
+    setMeta({
+      title: "Bike Town: Shop Bikes in a 3D Town",
+      description: `Ride a bike around ${D.site.name}'s 3D Bike Town: every building is a shop for road, gravel, mountain and e-bikes, parts and gear. Collect coins and earn XP.`,
+      crumbs: [{ name: "Bike Town", path: PATHS.town }],
+      schema: [{ "@type": "CollectionPage", name: "Bike Town", url: absUrl(PATHS.town), mainEntity: { "@type": "ItemList", itemListElement: places.filter((p) => p.href).map((p, i) => ({ "@type": "ListItem", position: i + 1, name: p.name, url: absUrl(p.href) })) } }]
+    });
+    if (PRERENDER || MODE !== "path") return;
+    const stage = $("#townStage");
+    import(`${BASE}js/town.js`)
+      .then((m) => { if (stage.isConnected) town = m.mount(stage, townApi(places)); })
+      .catch(() => { stage.classList.add("no-webgl"); const l = $(".town-loading", stage); if (l) l.innerHTML = "<p>Bike Town couldn't load, so here's every shop as a list below.</p>"; });
+  }
+
   /* ---------- Brands ---------- */
   const BRAND_INFO = {
     trek: "Trek is an American bike brand, founded in 1976 in Waterloo, Wisconsin. Its range runs from Marlin hardtails and FX hybrids to Domane endurance, Madone aero and Checkpoint gravel bikes.",
@@ -2336,6 +2638,9 @@
         break;
       }
       case "quick": openQuick(id); break;
+      case "copy-link":
+        (navigator.clipboard ? navigator.clipboard.writeText(location.href) : Promise.reject()).then(() => toast("Link copied")).catch(() => toast("Copy the address from your browser's address bar"));
+        break;
       case "compare": toggleCompare(id); break;
       case "compare-remove": toggleCompare(id); if ($("#compareModal").classList.contains("open")) renderCompare(); break;
       case "compare-clear": S.compare = []; save(); syncCompare(); break;
@@ -2499,6 +2804,8 @@
     closeAll(true);
     lastFocus = null;
     shop = null;
+    if (town) { try { town.destroy(); } catch (e) { /* already gone */ } town = null; }
+    document.body.classList.remove("in-town");
     if (!a) viewHome();
     else if ((a === "bikes" || (a === "parts" && HAS_PARTS)) && segs.length === 1) viewShop(a);
     else if ((a === "bikes" || a === "parts") && segs.length === 2 && catOf(b) && catOf(b).type === a.slice(0, -1)) viewShop(b);
@@ -2508,6 +2815,10 @@
     else if (a === "brands" && segs.length === 2 && brandOf(b)) viewShop("brand:" + b);
     else if (a === "guides" && segs.length === 2 && GUIDES[b]) viewGuide(b);
     else if (a === "about" && segs.length === 1) viewAbout();
+    else if (a === "town" && segs.length === 1) viewTown();
+    else if (a === "blog" && segs.length === 1) viewBlog();
+    else if (a === "blog" && segs.length === 2 && postOf(b)) viewPost(b);
+    else if (a === "privacy" && segs.length === 1) viewPrivacy();
     else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
     else if (a === "bike-finder" && segs.length === 1) viewFinder();
     else if (a === "rewards" && segs.length === 1) viewRewards();
@@ -2568,14 +2879,16 @@
   function buildFooter() {
     const link = (path, label) => `<a href="${url(path)}">${esc(label)}</a>`;
     const shop = $("#footShop");
-    if (shop) shop.innerHTML = `<h2>Shop</h2>${link(PATHS.bikes, "All bikes")}${D.categories.filter((c) => c.type === "bike").map((c) => link(PATHS.cat(c), `${c.label} bikes`)).join("")}${HAS_FRAMESETS ? link(PATHS.framesets, "Framesets") : ""}${HAS_PARTS ? link(PATHS.parts, "Parts & Gear") : ""}${link(PATHS.sale, "Sale")}${link(PATHS.finder, "Bike Finder")}`;
+    if (shop) shop.innerHTML = `<h2>Shop</h2>${link(PATHS.bikes, "All bikes")}${D.categories.filter((c) => c.type === "bike").map((c) => link(PATHS.cat(c), `${c.label} bikes`)).join("")}${HAS_FRAMESETS ? link(PATHS.framesets, "Framesets") : ""}${HAS_PARTS ? link(PATHS.parts, "Parts & Gear") : ""}${link(PATHS.sale, "Sale")}${link(PATHS.finder, "Bike Finder")}${link(PATHS.town, "Bike Town (3D)")}`;
     const brands = $("#footBrands");
     if (brands) {
       if (BRANDS.length) brands.innerHTML = `<h2>Brands</h2>${BRANDS.slice(0, 8).map((b) => link(PATHS.brand(b), b.name)).join("")}${BRANDS.length > 1 ? link(PATHS.brands, "All brands") : ""}${BUDGETS.slice(0, 4).map((b) => link(PATHS.budget(b), `Bikes under ${pesoK(b.max)}`)).join("")}`;
       else brands.remove();
     }
     const help = $("#footHelp");
-    if (help) help.innerHTML = `<h2>Help</h2>${link(PATHS.order, "How to order")}${link(PATHS.sizeGuide, "Bike size guide")}${link(PATHS.chooseGuide, "How to choose a bike")}${link(PATHS.about, "About us")}`;
+    if (help) help.innerHTML = `<h2>Help</h2>${link(PATHS.order, "How to order")}${link(PATHS.sizeGuide, "Bike size guide")}${link(PATHS.chooseGuide, "How to choose a bike")}${BLOG.length ? link(PATHS.blog, "Blog") : ""}${link(PATHS.about, "About us")}${link(PATHS.privacy, "Privacy notice")}`;
+    const nl = $("#footNewsletter");
+    if (nl) nl.innerHTML = newsletterHTML("footer");
     const legal = $(".footer-legal");
     if (legal) legal.innerHTML = `© <span id="year">${YEAR}</span> ${esc(D.site.name)}. ${CATALOG ? "Prices in Philippine pesos. Product names and logos belong to their brands." : "Product images and inventory are placeholders."}`;
   }
@@ -2642,6 +2955,10 @@
         ...(HAS_FRAMESETS ? [{ path: PATHS.framesets, priority: "0.7" }] : []),
         ...Object.keys(GUIDES).map((k) => ({ path: `guides/${k}/`, priority: "0.6" })),
         { path: PATHS.about, priority: "0.5" },
+        { path: PATHS.town, priority: "0.7" },
+        ...(BLOG.length ? [{ path: PATHS.blog, priority: "0.7" }] : []),
+        ...BLOG.map((p) => ({ path: PATHS.post(p), priority: "0.6", post: true })),
+        { path: PATHS.privacy, priority: "0.3" },
         ...D.products.map((p) => ({ path: PATHS.product(p), priority: "0.7", images: [...new Set(colorsOf(p).flatMap((c, i) => photosOf(p, i)).concat(photosOf(p, 0)))].slice(0, 10).map(bigPhoto), title: p.name })),
         // One page per SKU (shared on Facebook); they point search engines at their model page
         ...[...skuIndex.keys()].map((k) => ({ path: `products/${k}/`, variant: true })),
@@ -2650,6 +2967,7 @@
         { path: PATHS.favourites, noindex: true }
       ],
       brandArt: bikeSVG("#3c78c6", "road"),
+      posts: BLOG.map((p) => ({ slug: p.slug, title: p.title, art: postArt(p) })),
       products: D.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, price: (p.priceFrom ? "From " : "") + peso(p.price), compareAt: onSale(p) ? peso(p.compareAt) : "", category: (catOf(p.category) || {}).singular || "", hasImage: !!photoOf(p), art: art(p, 0, false) }))
     };
   }

@@ -28,10 +28,46 @@ The shop is built around how people buy a bike: budget first, then fit, then spe
 
 ### Gamification
 - **XP and 5 rider levels** (Rookie → Champion). Each level unlocks a bigger member discount (0–8%) that's applied in the cart automatically.
-- **11 badges / missions**: viewing products, exploring every category, using the Bike Finder, saving favourites, comparing bikes, building a full bike, unlocking free shipping, checking out, and more.
+- **13 badges / missions**: viewing products, visiting every shop in Bike Town, joining the mailing list, exploring every category, using the Bike Finder, saving favourites, comparing bikes, building a full bike, unlocking free shipping, checking out, and more.
 - **Daily Spin wheel**: one spin a day for discount codes, free shipping or bonus XP.
 - **Scroll "ride" bar**: a progress line with a rider that crosses the screen as you scroll. Toasts, confetti and level-up celebrations add to the effect.
 - Progress is saved in the browser's `localStorage`.
+
+## Bike Town (3D)
+`/town/` is the shop as a small 3D town (three.js). You ride a bike around; every building is a shop, made from the live catalog:
+- **Main street**: a shop per bike type (Road Bike Velodrome, Gravel Lodge, MTB Basecamp, Commuter Station, E-Bike Power Station, Folding Bike Kiosk), the Frame Studio, the Sari-sari Sale Stall, the **Budget Bank** (Bike Finder), the **Fit Studio** (frame size from your height) and the **Order Post Office** (your cart and how ordering works).
+- **Brand Avenue** (north): a glass showroom per brand. **Parts Row** (south): Parts Workshop, Tire & Wheel Shop and Gear Shop, down to the beach and pier.
+- **Landmarks**: the Rider Club HQ (level, badges, Town Pass) and a **Ferris wheel** for the Daily Spin.
+- **Controls**: arrow keys/WASD and Enter; click or tap anywhere (or on a shop's sign) to ride there; a joystick on phones; a **Places** list and a mini map. Shops open as a panel with the real product cards, so quick view, sizes, compare and Add to cart work as everywhere else.
+- **Game**: a **Town Pass** stamp per shop (+5 XP, all stamps = Town Explorer badge) and 20 gold coins a day on the streets (+2 XP each).
+- The page also lists every shop as plain links (for search engines and browsers without 3D). The 3D code (`js/town.js` + three.js, ~170 KB gzipped) is bundled by the build with esbuild and only downloaded on this page. Static parts are merged into one mesh per material (~240 draw calls), and phones get a lighter mode (no real-time shadows, lower resolution).
+- To change a shop's name, colour or building style: `TOWN_SHOPS` and `townPlaces()` in `js/app.js`. Building styles and the layout are in `js/town.js`.
+
+## Blog
+Posts are Markdown files in **`content/blog/`**, named `YYYY-MM-DD-the-address.md` (the address becomes `/blog/the-address/`). Start each with:
+
+```
+---
+title: Rainy Season Bike Care: Keep Rolling Through Tag-ulan
+description: One or two sentences for Google and the blog list (under 160 characters).
+date: 2026-11-18
+author: Cycle Central team
+tags: [Maintenance, Tips]
+category: city        (road, gravel, mountain, city, electric or folding: sets the drawing)
+---
+```
+
+then write in Markdown (`## Heading`, `- list`, `**bold**`, `[link](/bikes/road/)`). To show **live product cards with today's prices**, put a line like `{{products category="road" max="60000" limit="4" sort="high"}}` or `{{products brand="Michelin" limit="4"}}` on its own (any of `category`, `brand`, `min`, `max`, `limit`, `sort="low"|"high"`).
+
+Push the file (or add it on GitHub: **Add file → Create new file** in `content/blog/`) and the next deploy publishes it, with its own share image, `BlogPosting` structured data, a place in the sitemap and the RSS feed (`/blog/feed.xml`), and an IndexNow ping. A post dated in the future stays hidden until that day. The blog list is at `/blog/`; the home page shows the latest three.
+
+## Mailing list
+The signup (footer, home page, blog) works with any email service that gives you a signup form: **Brevo**, **MailerLite**, **Kit**, **Buttondown**, **Mailchimp**... It stays hidden until it's connected:
+1. Create a free account and a signup form (double opt-in is recommended).
+2. In the form's embed/HTML code, copy the `action="..."` address and the email field's `name`.
+3. Put them in `js/data.js` → `newsletter.action` and `newsletter.emailField` (plus any hidden fields as `newsletter.hidden`).
+
+Subscribers get the Insider badge (+30 XP). The **privacy notice** (`/privacy/`) covers the mailing list, order requests and what's stored in the browser.
 
 ## Branding
 This follows the Cycle Central brand guide (`CYCLE CENTRAL - PEGS`):

@@ -45,6 +45,18 @@ window.CC_DATA = {
     verification: { google: "", bing: "" }
   },
 
+  // Mailing list. Create a free signup form with an email service (Brevo, MailerLite, Kit,
+  // Buttondown, Mailchimp...) and paste its form address here; the signup then appears in the
+  // footer, on the home page and on the blog. Until then it's hidden.
+  newsletter: {
+    action: "",           // the form's address (its action="..." URL)
+    emailField: "email",  // name of the email field in that form: Brevo/Mailchimp "EMAIL",
+                          // MailerLite "fields[email]", Kit "email_address", Buttondown "email"
+    hidden: {},           // any hidden fields the service's form code includes, as { name: "value" }
+    title: "Get new arrivals, deals and riding tips",
+    text: "One email every couple of weeks from Cycle Central. Unsubscribe anytime."
+  },
+
   // Store policies. Each one shows on the site and in Google results only once it's filled in,
   // so nothing is promised that isn't your policy. Google shows shops with a clear return
   // policy and delivery time more prominently.

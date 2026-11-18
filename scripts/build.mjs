@@ -4,6 +4,8 @@
 //    robots.txt, 404.html, site.webmanifest
 //  - resized product photos (img/p/) and social share images (og/), app icons
 //  - feeds/products.xml for Google Merchant Center, Bing and Facebook/Instagram shops
+//  - js/town.js: Bike Town (3D) bundled with three.js
+//  - the blog from content/blog/*.md (scripts/blog.mjs): pages, blog-data/*.json, blog/feed.xml
 //
 // Usage: npm run build
 // Env:   SITE_URL   public address, default from js/data.js (site.url)
@@ -21,7 +23,9 @@ import { loadCatalog } from "./catalog.mjs";
 import { processPhotos } from "./images.mjs";
 import { productFeed } from "./feeds.mjs";
 import { INDEXNOW_KEY } from "./indexnow.mjs";
+import { loadBlog, rssFeed } from "./blog.mjs";
 import crypto from "node:crypto";
+import { build as bundle } from "esbuild";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
@@ -52,6 +56,8 @@ async function main() {
   await fs.rm(DIST, { recursive: true, force: true });
   await fs.mkdir(DIST, { recursive: true });
   for (const dir of ["css", "js", "assets"]) await fs.cp(path.join(ROOT, dir), path.join(DIST, dir), { recursive: true });
+  // Bike Town: js/town.js + three.js in one minified file, loaded only on /town/
+  await bundle({ entryPoints: [path.join(ROOT, "js/town.js")], bundle: true, minify: true, format: "esm", target: "es2020", outfile: path.join(DIST, "js/town.js"), legalComments: "eof", logLevel: "warning" });
 
   // Bikes from Cycle Beast. If the key is set but the feed can't be read, stop here so the
   // site that is already live stays up instead of being replaced.
@@ -73,6 +79,13 @@ async function main() {
   } else {
     console.log("Catalog: CATALOG_FEED_KEY is not set, so the placeholder bikes in js/data.js are used.");
   }
+
+  // Blog posts (content/blog/*.md): the list for every page, and each post's text on its own
+  const blog = await loadBlog(path.join(ROOT, "content/blog"));
+  await write("js/blog.js", `/* Blog posts from content/blog/ */\nwindow.CC_BLOG = ${JSON.stringify({ posts: blog.posts.map(({ html, ...meta }) => meta) })};\n`);
+  for (const p of blog.posts) await write(`blog-data/${p.slug}.json`, JSON.stringify({ html: p.html }));
+  console.log(`Blog: ${blog.posts.length} post${blog.posts.length === 1 ? "" : "s"}`);
+  for (const w of blog.warnings) console.log(`  ! ${w}`);
 
   // Page template: index.html with every relative URL pointed at BASE
   let template = await fs.readFile(path.join(ROOT, "index.html"), "utf8");
@@ -108,11 +121,12 @@ async function main() {
 
   await page.goto(origin + BASE);
   await page.waitForFunction(() => window.__CC__);
-  const { routes, products, brandArt } = await page.evaluate(() => window.__CC__);
+  const { routes, products, brandArt, posts } = await page.evaluate(() => window.__CC__);
 
-  const snapshot = async (pagePath, { notFound = false } = {}) => {
+  const snapshot = async (pagePath, { notFound = false, post = false } = {}) => {
     await page.goto(origin + BASE + pagePath);
     await page.waitForFunction((p) => document.documentElement.dataset.route === p, pagePath);
+    if (post) await page.waitForSelector('.post-body[data-full="1"]', { timeout: 15000 });
     return page.evaluate((nf) => {
       const d = document.documentElement;
       delete d.dataset.route;
@@ -124,7 +138,7 @@ async function main() {
 
   const report = [];
   for (const r of routes) {
-    const html = await snapshot(r.path);
+    const html = await snapshot(r.path, { post: !!r.post });
     await write(path.join(r.path, "index.html"), html);
     report.push({ ...r, html });
   }
@@ -173,6 +187,11 @@ async function main() {
       <div class="price">${p.price}${p.compareAt ? `<s>${p.compareAt}</s>` : ""}</div>`), `og/products/${p.slug}.png`);
   }
 
+  for (const p of posts || []) {
+    const size = p.title.length > 70 ? 40 : p.title.length > 48 ? 48 : 58;
+    await render(card(p.art, `<div class="eyebrow">${esc(data.site.name)} Blog</div><h1 style="font-size:${size}px">${esc(p.title)}</h1>`), `og/blog/${p.slug}.png`);
+  }
+
   const favicon = await fs.readFile(path.join(ROOT, "assets/favicon.svg"), "utf8");
   const mark = (await fs.readFile(path.join(ROOT, "assets/mark.svg"), "utf8")).replace(/#3c78c6/g, "#eeebe3");
   const iconPage = (inner, bg = "transparent") => `<!doctype html><html><head><style>html,body{margin:0;background:${bg}}
@@ -218,6 +237,7 @@ ${indexable.map((r) => `  <url><loc>${xmlEsc(abs(r.path))}</loc><lastmod>${pages
 </urlset>
 `);
   await write("robots.txt", `# ${data.site.name}: every page may be crawled\nUser-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}${BASE}sitemap.xml\n`);
+  if (blog.posts.length) await write("blog/feed.xml", rssFeed(blog.posts, { site: data.site, abs }));
   // IndexNow key file (see scripts/indexnow.mjs)
   await write(`${INDEXNOW_KEY}.txt`, INDEXNOW_KEY);
   // Shopping feed for Google Merchant Center, Bing and Facebook/Instagram shops
