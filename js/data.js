@@ -45,6 +45,10 @@ window.CC_DATA = {
     verification: { google: "", bing: "" }
   },
 
+  // Rider Club rewards: XP and levels with member discounts, badges, the Daily Spin wheel (discount
+  // codes) and Bike Town's coins and Town Pass. Switched off for now: set to true to bring it all back.
+  rewards: false,
+
   // Mailing list. The signup appears in the footer, on the home page and on the blog once
   // `action` is set; until then it's hidden. See docs/mailing-list.md.
   //  - Cycle Beast (recommended): action: "https://cycle-beast.vercel.app/api/newsletter/subscribe",
@@ -88,7 +92,7 @@ window.CC_DATA = {
   pages: {
     home: {
       aboutTitle: "Bike shop in the Philippines",
-      about: "Cycle Central sells road, gravel, mountain, city and electric bikes, plus components, wheels, tires and riding gear. Set your budget to see the best bikes for it, compare specs side by side, or browse by category. Every purchase earns XP in the Rider Club, which unlocks member discounts. All prices are in Philippine pesos."
+      about: "Cycle Central sells road, gravel, mountain, city and electric bikes, plus components, wheels, tires and riding gear. Set your budget to see the best bikes for it, compare specs side by side, or browse by category. All prices are in Philippine pesos."
     },
     bikes: {
       seoTitle: "Bikes for Sale in the Philippines",

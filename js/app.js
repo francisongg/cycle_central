@@ -9,6 +9,8 @@
   // Only show categories that have something in them
   D.categories = D.categories.filter((c) => D.products.some((p) => p.category === c.id));
   const HAS_PARTS = D.products.some((p) => p.type !== "bike");
+  // Rider Club rewards (XP, levels, member discounts, badges, Daily Spin, Bike Town coins): js/data.js `rewards`
+  const REWARDS = D.rewards === true;
   const { icon, bikeSVG, partSVG } = window.CC_ART;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -123,7 +125,7 @@
     const [, page, arg] = location.hash.split("/");
     if (page === "shop") return shopPath(arg || "bikes");
     if (page === "product") { const p = byId(arg); return p ? PATHS.product(p) : PATHS.home; }
-    if (page === "rewards") return PATHS.rewards;
+    if (page === "rewards") return REWARDS ? PATHS.rewards : PATHS.home;
     return PATHS.home;
   }
 
@@ -390,6 +392,7 @@
   }
 
   function addXP(amount, reason, quiet = false) {
+    if (!REWARDS) return;
     const before = levelIndex();
     S.xp += amount;
     save();
@@ -405,7 +408,7 @@
   }
 
   function award(badgeId) {
-    if (PRERENDER || S.badges.includes(badgeId)) return;
+    if (PRERENDER || !REWARDS || S.badges.includes(badgeId)) return;
     const b = BADGES.find((x) => x.id === badgeId);
     if (!b) return;
     S.badges.push(badgeId);
@@ -415,6 +418,7 @@
   }
 
   function renderXP(pulse) {
+    if (!REWARDS) return;
     const i = levelIndex();
     $("#xpLevel").textContent = `${LEVEL_ICONS[i]} ${D.levels[i].name}`;
     $("#xpNum").textContent = `${S.xp} XP`;
@@ -873,7 +877,7 @@
         </div>
       </section>` : ""}
 
-      <section class="section alt">
+      ${REWARDS ? `<section class="section alt">
         <div class="wrap">
           <div class="section-head"><div><h2>Rider Club</h2><p>Earn XP as you shop. Higher levels unlock bigger member discounts.</p></div><a class="text-link" href="${url(PATHS.rewards)}">How it works ${icon("arrow", 16)}</a></div>
           <div class="game-strip">
@@ -894,7 +898,7 @@
             </div>
           </div>
         </div>
-      </section>
+      </section>` : ""}
 
       ${BLOG.length ? `<section class="section tight">
         <div class="wrap">
@@ -908,7 +912,7 @@
         <div class="wrap about-grid">
           <div class="about-copy">
             <h2>${esc(D.pages.home.aboutTitle)}</h2>
-            <p>${esc(D.pages.home.about)}</p>
+            <p>${esc(D.pages.home.about)}${REWARDS ? " Every purchase earns XP in the Rider Club, which unlocks member discounts." : ""}</p>
           </div>
           <nav class="about-links" aria-label="Shop by category">
             <h3>Shop by type</h3>
@@ -1278,7 +1282,7 @@
               <li>${icon("truck")}${shown.price >= D.freeShippingThreshold ? "Free shipping on this item" : `Free shipping on orders over ${peso(D.freeShippingThreshold)}`}</li>
               <li>${icon("chat")}Order by chat: a sales rep confirms size, stock and delivery</li>
               ${POL.returnDays ? `<li>${icon("returns")}${POL.returnDays}-day returns</li>` : ""}
-              <li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(shown.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>
+              ${REWARDS ? `<li>${icon("bolt")}${LEVEL_PERKS[lvl] ? `${D.levels[lvl].name} member price: ${peso(shown.price * (1 - LEVEL_PERKS[lvl] / 100))} (${LEVEL_PERKS[lvl]}% off)` : `Earn ${xp} XP in the Rider Club with this order`}</li>` : ""}
             </ul>
           </div>
         </div>
@@ -1445,8 +1449,8 @@
 
   function cartTotals() {
     const sub = S.cart.reduce((s, l) => s + linePrice(l) * l.qty, 0);
-    const lvlPct = LEVEL_PERKS[levelIndex()];
-    const code = S.appliedCode ? D.spinPrizes.find((x) => x.code === S.appliedCode) : null;
+    const lvlPct = REWARDS ? LEVEL_PERKS[levelIndex()] : 0;
+    const code = REWARDS && S.appliedCode ? D.spinPrizes.find((x) => x.code === S.appliedCode) : null;
     const codePct = code && code.pct ? code.pct : 0;
     const discount = sub * ((lvlPct + codePct) / 100);
     const freeShip = sub >= D.freeShippingThreshold || (code && code.ship);
@@ -1500,7 +1504,7 @@
     }).join("") + (upsell.length ? `<div class="upsell"><h5>Quick adds${t.freeShip ? "" : " to unlock free shipping"}</h5>${upsell.map((p) => `<div class="upsell-item"><span>${esc(p.name)} · <b>${peso(p.price)}</b></span><button class="btn btn-sm btn-ghost" data-action="add" data-id="${p.id}">+ Add</button></div>`).join("")}</div>` : "");
 
     $("#cartFoot").innerHTML = `
-      <div class="code-row"><input id="codeIn" placeholder="Discount code" value="${S.appliedCode || ""}" aria-label="Discount code"><button class="btn btn-sm" data-action="apply-code">Apply</button></div>
+      ${REWARDS ? `<div class="code-row"><input id="codeIn" placeholder="Discount code" value="${S.appliedCode || ""}" aria-label="Discount code"><button class="btn btn-sm" data-action="apply-code">Apply</button></div>` : ""}
       <div class="sum-row"><span>Subtotal</span><span>${peso(t.sub)}</span></div>
       ${t.lvlPct ? `<div class="sum-row discount"><span>${LEVEL_ICONS[levelIndex()]} ${D.levels[levelIndex()].name} discount (${t.lvlPct}%)</span><span>−${peso(t.sub * t.lvlPct / 100)}</span></div>` : ""}
       ${t.codePct ? `<div class="sum-row discount"><span>Code ${S.appliedCode} (${t.codePct}%)</span><span>−${peso(t.sub * t.codePct / 100)}</span></div>` : ""}
@@ -1536,7 +1540,7 @@
     });
     const money = [`Subtotal: ${peso(t.sub)}`];
     if (t.lvlPct) money.push(`Rider Club ${D.levels[levelIndex()].name} discount: ${t.lvlPct}%`);
-    if (S.appliedCode) money.push(`Discount code: ${S.appliedCode}`);
+    if (REWARDS && S.appliedCode) money.push(`Discount code: ${S.appliedCode}`);
     money.push(`Estimated total: ${peso(t.total)}${t.ship ? ` (incl. ${peso(t.ship)} delivery)` : ""}`);
     const details = [`Order ref: ${ref}`, `Name: ${who.name}`];
     if (who.mobile) details.push(`Mobile: ${who.mobile}`);
@@ -1686,7 +1690,7 @@
               <div><dt>Can I pay on the website?</dt><dd>Not yet. Payment details are sent in the chat once your order is confirmed.</dd></div>
               <div><dt>Is my bike reserved when I send a request?</dt><dd>Our sales team checks stock and confirms it when they reply.</dd></div>
               <div><dt>Not sure about the size?</dt><dd>Enter your height on any bike's page to see the size we suggest, or ask us in the chat.</dd></div>
-              <div><dt>Do Rider Club discounts count?</dt><dd>Your member discount and any Daily Spin code are included in your order message.</dd></div>
+              ${REWARDS ? `<div><dt>Do Rider Club discounts count?</dt><dd>Your member discount and any Daily Spin code are included in your order message.</dd></div>` : ""}
             </dl>
           </section>
         </div>
@@ -1920,8 +1924,8 @@
     out.push({ id: "fit", kind: "fit", group: "main", name: "Fit Studio", style: "fit", icon: "📏", color: "#2a9d8f", blurb: "Find your frame size from your height.", href: PATHS.sizeGuide, hrefLabel: "bike size guide" });
     BRANDS.slice(0, 6).forEach((b) => out.push({ id: "brand-" + b.slug, kind: "shop", group: "brands", name: `${b.name} Showroom`, sign: b.name, style: "showroom", icon: "🏬", color: "#1c2126", colors: coloursOf(b.items),
       blurb: brandInfo(b) || `Every ${b.name} model we sell.`, items: b.items, count: count(b.items), href: PATHS.brand(b), hrefLabel: `${b.name} price list` }));
-    out.push({ id: "club", kind: "club", group: "landmark-west", name: "Rider Club HQ", sign: "Rider Club", style: "club", icon: "🏆", color: "#3c78c6", blurb: "Your level, badges and Town Pass.", href: PATHS.rewards, hrefLabel: "Rider Club" });
-    out.push({ id: "spin", kind: "spin", group: "landmark-east", name: "Daily Spin Wheel", sign: "Daily Spin", style: "ferris", icon: "🎡", color: "#e8742a", blurb: "Spin once a day for discount codes, free shipping or bonus XP." });
+    if (REWARDS) out.push({ id: "club", kind: "club", group: "landmark-west", name: "Rider Club HQ", sign: "Rider Club", style: "club", icon: "🏆", color: "#3c78c6", blurb: "Your level, badges and Town Pass.", href: PATHS.rewards, hrefLabel: "Rider Club" });
+    if (REWARDS) out.push({ id: "spin", kind: "spin", group: "landmark-east", name: "Daily Spin Wheel", sign: "Daily Spin", style: "ferris", icon: "🎡", color: "#e8742a", blurb: "Spin once a day for discount codes, free shipping or bonus XP." });
     return out;
   }
   let town = null; // the running 3D town, stopped when you leave the page
@@ -1939,10 +1943,12 @@
       openSpin: () => { renderSpin(); openPanel("#spinModal"); },
       modalOpen: () => $("#overlay").classList.contains("show"),
       state: S.town, save, today: today(),
+      rewards: REWARDS,
       stamp(id, name) {
         if (S.town.stamps.includes(id)) return false;
         S.town.stamps.push(id);
         save();
+        if (!REWARDS) return false;
         addXP(5, `🏷️ Town Pass stamp: ${esc(name)}`);
         if (places.every((x) => S.town.stamps.includes(x.id))) award("town");
         return true;
@@ -1961,8 +1967,8 @@
             <div class="town-title"><h1 id="townTitle">Bike Town</h1><p>Ride around. Every building is a shop.</p></div>
             <div class="town-actions">
               <button class="town-btn" type="button" data-town="places">${icon("pin", 16)}Places</button>
-              <button class="town-btn" type="button" data-town="pass"><span aria-hidden="true">🏷️</span><span class="sr-only">Town Pass stamps</span> <b data-town-pass>0/${places.length}</b></button>
-              <span class="town-btn town-coin" title="Coins collected today"><span aria-hidden="true">🪙</span><span class="sr-only">Coins today</span> <b data-town-coins>0/20</b></span>
+              ${REWARDS ? `<button class="town-btn" type="button" data-town="pass"><span aria-hidden="true">🏷️</span><span class="sr-only">Town Pass stamps</span> <b data-town-pass>0/${places.length}</b></button>
+              <span class="town-btn town-coin" title="Coins collected today"><span aria-hidden="true">🪙</span><span class="sr-only">Coins today</span> <b data-town-coins>0/20</b></span>` : ""}
               <button class="town-btn icon" type="button" data-town="help" aria-label="How to ride">?</button>
             </div>
             <div class="town-zoom"><button class="town-btn icon" type="button" data-zoom="in" aria-label="Zoom in">${icon("plus", 16)}</button><button class="town-btn icon" type="button" data-zoom="out" aria-label="Zoom out">${icon("minus", 16)}</button></div>
@@ -1973,7 +1979,7 @@
         </div>
         <div class="wrap town-info">
           <h2>Shops in Bike Town</h2>
-          <p class="page-intro">Bike Town is ${esc(D.site.name)} as a little 3D town. Ride your bike from shop to shop, browse every bike and part, stamp your Town Pass and collect coins for Rider Club XP. Prefer a list? Every shop is here too.</p>
+          <p class="page-intro">Bike Town is ${esc(D.site.name)} as a little 3D town. Ride your bike from shop to shop and browse every bike and part${REWARDS ? ", stamp your Town Pass and collect coins for Rider Club XP" : ""}. Prefer a list? Every shop is here too.</p>
           <ul class="town-place-cards">${places.map((p) => `<li style="--c:${p.color}">
             <span class="town-place-icon" aria-hidden="true">${p.icon}</span>
             <div><h3>${esc(p.name)}</h3><p>${esc(p.count || p.blurb || "")}</p>
@@ -1983,15 +1989,15 @@
           <ul class="steps-list">
             <li>Ride with the arrow keys or WASD, or tap anywhere (or on a shop's sign) and your rider goes there.</li>
             <li>Ride up to a door and press Enter, or tap the button that appears, to go in and shop. Your cart works everywhere.</li>
-            <li>Every shop stamps your Town Pass (+5 XP); visit them all for the Town Explorer badge. ${20} gold coins appear on the streets every day, worth 2 XP each.</li>
-            <li>Spin the Ferris wheel once a day for discount codes, and drop by the Post Office to send your order.</li>
+            ${REWARDS ? `<li>Every shop stamps your Town Pass (+5 XP); visit them all for the Town Explorer badge. 20 gold coins appear on the streets every day, worth 2 XP each.</li>
+            <li>Spin the Ferris wheel once a day for discount codes, and drop by the Post Office to send your order.</li>` : `<li>Drop by the Post Office to see your cart and send your order request.</li>`}
           </ul>
         </div>
       </section>`;
     document.body.classList.add("in-town");
     setMeta({
       title: "Bike Town: Shop Bikes in a 3D Town",
-      description: `Ride a bike around ${D.site.name}'s 3D Bike Town: every building is a shop for road, gravel, mountain and e-bikes, parts and gear. Collect coins and earn XP.`,
+      description: `Ride a bike around ${D.site.name}'s 3D Bike Town: every building is a shop for road, gravel, mountain and e-bikes, parts and gear.${REWARDS ? " Collect coins and earn XP." : " Browse, compare and order by chat."}`,
       crumbs: [{ name: "Bike Town", path: PATHS.town }],
       schema: [{ "@type": "CollectionPage", name: "Bike Town", url: absUrl(PATHS.town), mainEntity: { "@type": "ItemList", itemListElement: places.filter((p) => p.href).map((p, i) => ({ "@type": "ListItem", position: i + 1, name: p.name, url: absUrl(p.href) })) } }]
     });
@@ -2636,10 +2642,10 @@
       }
       case "close-all": closeAll(); break;
       case "open-cart": renderCart(); openPanel("#cartDrawer"); break;
-      case "open-spin": renderSpin(); openPanel("#spinModal"); break;
+      case "open-spin": if (REWARDS) { renderSpin(); openPanel("#spinModal"); } break;
       case "open-search": openSearch(); break;
       case "open-compare": renderCompare(); openPanel("#compareModal"); break;
-      case "go-rewards": navigate(PATHS.rewards); break;
+      case "go-rewards": if (REWARDS) navigate(PATHS.rewards); break;
 
       case "add":
         e.preventDefault();
@@ -2840,7 +2846,7 @@
     else if (a === "privacy" && segs.length === 1) viewPrivacy();
     else if ((a === "sale" || a === "favourites") && segs.length === 1) viewShop(a);
     else if (a === "bike-finder" && segs.length === 1) viewFinder();
-    else if (a === "rewards" && segs.length === 1) viewRewards();
+    else if (a === "rewards" && segs.length === 1 && REWARDS) viewRewards();
     else if (a === "how-to-order" && segs.length === 1) viewHowToOrder();
     else if (a === "products" && segs.length === 2 && bySlug(b)) viewProduct(bySlug(b).id);
     else if (a === "products" && segs.length === 2 && skuIndex.has(b)) viewProduct(skuIndex.get(b).p.id, skuIndex.get(b).v);
@@ -2914,6 +2920,11 @@
 
   // Header and footer: draw icons, and point links at the right base address
   $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon, +el.dataset.size || 20); });
+  // Rewards off: no XP pill, Rewards link, Rider Club footer column or Daily Spin link
+  if (!REWARDS) {
+    $$(".xp-pill, .nav-rewards, #footClub, .promo-bar [data-action='open-spin'], .promo-bar .sep").forEach((el) => el.remove());
+    document.body.classList.add("no-rewards");
+  }
   // No parts in the catalog yet: hide the Parts & Gear links
   if (!HAS_PARTS) $$('[data-path="parts/"]').forEach((a) => (a.closest(".nav-item") || a).remove());
   $$("[data-path]").forEach((a) => a.setAttribute("href", url(a.dataset.path)));
@@ -2982,7 +2993,7 @@
         // One page per SKU (shared on Facebook); they point search engines at their model page
         ...[...skuIndex.keys()].map((k) => ({ path: `products/${k}/`, variant: true })),
         { path: PATHS.order, priority: "0.6" },
-        { path: PATHS.rewards, noindex: true },
+        ...(REWARDS ? [{ path: PATHS.rewards, noindex: true }] : []),
         { path: PATHS.favourites, noindex: true }
       ],
       brandArt: bikeSVG("#3c78c6", "road"),

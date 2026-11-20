@@ -1043,8 +1043,8 @@ export function mount(stage, api) {
       body: `<ul class="steps-list town-help">
         <li>${touch ? "<b>Tap</b> anywhere to ride there, or tap a shop's sign. Use the <b>joystick</b> to steer yourself." : "<b>Arrow keys or WASD</b> to ride, <b>Enter</b> to go into a shop. Or <b>click</b> anywhere, or a shop's sign, to ride there."}</li>
         <li><b>Places</b> lists every shop; the map in the corner shows where you are.</li>
-        <li>Collect a <b>Town Pass stamp</b> in every shop and grab the <b>gold coins</b> for Rider Club XP.</li>
-        <li>Spin the <b>Ferris wheel</b> once a day for discount codes. Your cart works everywhere in town.</li></ul>`,
+        ${api.rewards !== false ? `<li>Collect a <b>Town Pass stamp</b> in every shop and grab the <b>gold coins</b> for Rider Club XP.</li>
+        <li>Spin the <b>Ferris wheel</b> once a day for discount codes. Your cart works everywhere in town.</li>` : `<li>Your cart works everywhere in town; send your order from the <b>Post Office</b>.</li>`}</ul>`,
       foot: `<button class="btn btn-brand" type="button" data-start>Start riding</button>`
     });
     sheet.querySelector("[data-start]").addEventListener("click", closeSheet);
@@ -1324,7 +1324,7 @@ export function mount(stage, api) {
     assign();
     decorate();
     addNPCs();
-    addCoins();
+    if (api.rewards !== false) addCoins();
     timing.scene = performance.now() - t0;
     mergeInto(scene);
     timing.merge = performance.now() - t0 - timing.scene;

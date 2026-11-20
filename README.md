@@ -27,6 +27,8 @@ The shop is built around how people buy a bike: budget first, then fit, then spe
 - Old `/#/...` links redirect to the new addresses.
 
 ### Gamification
+> **Rewards are switched off for now** (`rewards: false` in `js/data.js`): no Rider Club page, XP or levels, member discounts, badges, Daily Spin or discount codes, and Bike Town has no coins, Town Pass, Rider Club HQ or Ferris wheel. Set `rewards: true` to bring all of it back. The Bike Finder, compare and Bike Town shopping work either way.
+
 - **XP and 5 rider levels** (Rookie → Champion). Each level unlocks a bigger member discount (0–8%) that's applied in the cart automatically.
 - **13 badges / missions**: viewing products, visiting every shop in Bike Town, joining the mailing list, exploring every category, using the Bike Finder, saving favourites, comparing bikes, building a full bike, unlocking free shipping, checking out, and more.
 - **Daily Spin wheel**: one spin a day for discount codes, free shipping or bonus XP.
